@@ -499,7 +499,7 @@ impl AppDirs {
         self.data.join("logs")
     }
 
-    /// Cache for ETag'd theming assets (logos, backgrounds) and their manifest.
+    /// Cache for ETag'd downloads, such as the Proton release lists.
     pub fn asset_cache_dir(&self) -> PathBuf {
         self.cache.join("assets")
     }

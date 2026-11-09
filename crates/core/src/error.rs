@@ -2,7 +2,7 @@
 //!
 //! Each submodule owns a `thiserror` enum describing what can actually go
 //! wrong there; [`CoreError`] is the aggregate the crate boundary exposes.
-//! Application-level orchestration (CLI/GUI) wraps these in `anyhow`.
+//! Application-level orchestration (the CLI) wraps these in `anyhow`.
 
 use std::path::PathBuf;
 

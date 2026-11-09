@@ -98,54 +98,6 @@ impl Http {
         Ok(Some(value))
     }
 
-    /// POST a body and read a small JSON answer back: a bug report's
-    /// screenshot. Its own short timeout: someone is watching, and on failure
-    /// the picture travels inside the report.
-    pub async fn post_bytes<T: serde::de::DeserializeOwned>(
-        &self,
-        url: &str,
-        content_type: &str,
-        body: Vec<u8>,
-        timeout: Duration,
-    ) -> Result<T, NetError> {
-        let body = self.post(url, content_type, &[], body, timeout).await?;
-        serde_json::from_slice(&body)
-            .map_err(|e| NetError::Decode { url: url.to_owned(), source: e })
-    }
-
-    /// POST a body with extra headers: a bug report to our Sentry server
-    /// (`X-Sentry-Auth`), through this client, not a second HTTP stack.
-    pub async fn post(
-        &self,
-        url: &str,
-        content_type: &str,
-        headers: &[(&str, &str)],
-        body: Vec<u8>,
-        timeout: Duration,
-    ) -> Result<Vec<u8>, NetError> {
-        let mut request = self
-            .client
-            .post(url)
-            .header(reqwest::header::CONTENT_TYPE, content_type)
-            .timeout(timeout);
-        for (name, value) in headers {
-            request = request.header(*name, *value);
-        }
-
-        let response = request
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| NetError::Request { url: url.to_owned(), source: e })?;
-
-        let response = check_status(url, response)?;
-        response
-            .bytes()
-            .await
-            .map(|body| body.to_vec())
-            .map_err(|e| NetError::Request { url: url.to_owned(), source: e })
-    }
-
     /// Fetch a body, revalidating against `cache` when possible.
     ///
     /// Returns `None` on `304`; the caller reads [`ETagCache::read`].

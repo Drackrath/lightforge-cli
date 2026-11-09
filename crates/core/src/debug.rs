@@ -1,6 +1,6 @@
-//! The "Copy Debug Info" bundle.
+//! The debug-info bundle.
 //!
-//! One block of text to paste into a bug report, shared by GUI and CLI.
+//! One block of text to paste into a bug report.
 //! Nothing here fails: an unreadable fact is reported as unavailable.
 
 use std::fmt::Write as _;
@@ -37,16 +37,13 @@ pub struct DebugInfo {
     pub gpu_driver: Option<String>,
     /// The proprietary NVIDIA module's version, when that is what is loaded.
     pub nvidia: Option<String>,
-    /// What the renderer picked, and over which API; empty from the CLI.
-    pub graphics: Option<String>,
-    pub graphics_backend: Option<String>,
     /// Processor model and total RAM, from the same place.
     pub cpu: Option<String>,
     pub memory: Option<u64>,
     /// Most recent crash/error log: path, modified time, and its tail.
     pub last_crash: Option<CrashLog>,
     /// What the Battle.net client did about launches and installs; see
-    /// [`client_excerpt`]. Filled in by the GUI, for a report only.
+    /// [`client_excerpt`]. Only filled in for a report.
     pub client_log: Option<CrashLog>,
     /// The end of Lightforge's own log; see [`log_tail`].
     pub own_log: Option<String>,
@@ -98,8 +95,6 @@ impl DebugInfo {
             session: session(),
             gpu_driver: gpu_driver(),
             nvidia: nvidia_version(),
-            graphics: None,
-            graphics_backend: None,
             cpu: None,
             memory: None,
             last_crash: newest_log(&install),
@@ -134,10 +129,8 @@ impl DebugInfo {
         row(&mut out, "os", &self.os);
         row(&mut out, "kernel", &self.kernel);
         row(&mut out, "session", &opt(&self.session));
-        row(&mut out, "gpu", &opt(&self.graphics));
         row(&mut out, "gpu driver", &opt(&self.gpu_driver));
         row(&mut out, "nvidia", &opt(&self.nvidia));
-        row(&mut out, "renderer", &opt(&self.graphics_backend));
         row(&mut out, "cpu", &opt(&self.cpu));
         row(
             &mut out,
@@ -413,9 +406,7 @@ mod tests {
             "os",
             "kernel",
             "session",
-            "gpu",
             "gpu driver",
-            "renderer",
             "cpu",
             "memory",
         ] {
@@ -552,7 +543,7 @@ D 2026-11-05 18:25:33.205293 [InstallManager] {Main} Game is running: wowf
     #[test]
     fn the_own_log_tail_leaves_out_what_names_an_account() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("lightforge-gui.log");
+        let path = dir.path().join("lightforge-cli.log");
         std::fs::write(&path, "INFO hand-off to Battle.net for hs_beta\nINFO contact a@b.example\n").unwrap();
         assert_eq!(log_tail(&path).as_deref(), Some("INFO hand-off to Battle.net for hs_beta"));
     }

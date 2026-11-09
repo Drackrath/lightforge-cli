@@ -1,0 +1,176 @@
+name: Release
+
+# Builds the `lightforge` binary for every target on a native runner (no
+# cross-compiling) and attaches it to a GitHub Release, Aurelia-style. Assets:
+#
+#   lightforge_linux_x86_64, lightforge_linux_arm64   the raw binaries
+#   lightforge_<version>-1_<arch>.deb                  cargo-deb, per arch
+#   SHA256SUMS, SHA256SUMS.sig, SHA256SUMS.pem         keyless cosign signature
+#
+# The runners are Ubuntu 22.04 on purpose: a binary only ever asks for the
+# glibc it was linked against, so building there keeps the 2.35 floor
+# (Ubuntu 22.04, SteamOS, Bazzite) without a container. `check-glibc` asserts it.
+#
+# A pushed v* tag builds and publishes; workflow_dispatch only builds, so the
+# matrix can be tried without tagging. The schedule only warms main's cache.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+  # Unused caches expire after 7 days.
+  schedule:
+    - cron: "0 3 * * 1,5"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            asset: lightforge_linux_x86_64
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            asset: lightforge_linux_arm64
+          - name: nix-flake
+            os: ubuntu-24.04
+            builder: nix
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        if: matrix.builder != 'nix'
+        uses: dtolnay/rust-toolchain@stable
+
+      # After the toolchain: rustc is part of the key.
+      - name: Cache Rust build
+        if: matrix.builder != 'nix'
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build lightforge (release)
+        if: matrix.builder != 'nix'
+        run: cargo build --release --locked -p lightforge-cli
+
+      - name: Check the glibc floor
+        if: matrix.builder != 'nix'
+        run: make check-glibc
+
+      - name: Smoke-test the binary
+        if: matrix.builder != 'nix'
+        run: target/release/lightforge --version
+
+      - name: Install Nix
+        if: matrix.builder == 'nix'
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Build lightforge (nix flake)
+        if: matrix.builder == 'nix'
+        run: nix build --print-build-logs .#lightforge-unwrapped
+
+      - name: Smoke-test the flake build
+        if: matrix.builder == 'nix'
+        run: ./result/bin/lightforge --version
+
+      - name: Stage binary as release asset
+        if: matrix.builder != 'nix'
+        run: |
+          mkdir -p dist
+          cp target/release/lightforge "dist/${{ matrix.asset }}"
+          chmod +x "dist/${{ matrix.asset }}"
+
+      # dpkg and rpm order `1.0.0~beta.1` before `1.0.0`; `-` would not.
+      - name: Build .deb package
+        if: matrix.builder != 'nix'
+        run: |
+          cargo install cargo-deb --locked
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          cargo deb -p lightforge-cli --no-build --no-strip \
+            --deb-version "$(echo "$version" | tr - '~')-1" --output dist/
+          # GitHub rewrites `~` in asset names to `.`; name it what it will be served as.
+          for f in dist/*~*.deb; do [ -e "$f" ] && mv "$f" "$(echo "$f" | tr '~' '.')"; done
+          ls -l dist
+
+      - name: Upload build artifacts
+        if: matrix.builder != 'nix'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/*
+
+      # Straight to the release with `gh`: the first job to finish creates it,
+      # the rest attach to it. Tags only; workflow_dispatch just builds.
+      - name: Publish assets to release
+        if: startsWith(github.ref, 'refs/tags/') && matrix.builder != 'nix'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=()
+          case "$GITHUB_REF_NAME" in
+            *-rc*|*-beta*|*-alpha*|*-pre*) pre=(--prerelease) ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Lightforge $GITHUB_REF_NAME" \
+            --generate-notes "${pre[@]}" 2>/dev/null \
+          || gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  checksums:
+    name: Checksums and signature
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release-assets
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir release-assets
+
+      - name: Generate SHA256SUMS
+        run: |
+          rm -f release-assets/SHA256SUMS*
+          (
+            cd release-assets
+            find . -maxdepth 1 -type f -printf '%f\0' | sort -z |
+              while IFS= read -r -d '' asset; do sha256sum -- "$asset"; done
+          ) > SHA256SUMS
+          test -s SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign SHA256SUMS
+        run: |
+          cosign sign-blob SHA256SUMS --yes \
+            --output-signature SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.pem
+          test -s SHA256SUMS.sig && test -s SHA256SUMS.pem
+
+      - name: Publish checksums and signature
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS SHA256SUMS.sig SHA256SUMS.pem \
+            --repo "$GITHUB_REPOSITORY" --clobber

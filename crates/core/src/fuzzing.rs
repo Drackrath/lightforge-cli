@@ -131,15 +131,3 @@ pub fn productdb_splice(bytes: &[u8]) {
 pub fn steam_libraryfolders(bytes: &[u8]) {
     let _ = crate::steam::parse_library_paths(&String::from_utf8_lossy(bytes));
 }
-
-pub fn steam_loginusers(bytes: &[u8]) {
-    let _ = crate::steam_shortcut::most_recent(&String::from_utf8_lossy(bytes));
-}
-
-pub fn steam_shortcuts(bytes: &[u8]) {
-    let Some(root) = crate::steam_shortcut::parse(bytes) else {
-        return;
-    };
-    let written = crate::steam_shortcut::render(&root);
-    assert_eq!(crate::steam_shortcut::parse(&written), Some(root), "shortcuts.vdf round-trips");
-}

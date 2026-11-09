@@ -1,6 +1,18 @@
 # Lightforge release notes
 
 
+## Unreleased
+
+Lightforge is now a command-line tool only. The graphical launcher is gone, and the `lightforge` CLI, which could already install, update, verify and launch everything, is the product. Releases are now the bare binary, a .deb and signed checksums.
+
+- Removed the GUI (`lightforge-gui`) and everything only it used: gamepad support, the in-app bug reporter and its crash reporting, the file picker, screenshots, themes and artwork, adding Lightforge to Steam's library, the release-notes popup and the self-updater. The binary no longer needs libudev; it links only libc, libm and libgcc_s.
+- Removed the `lightforge assets` command.
+- Removed the config keys `assets_source`, `contact`, `minimize_on_launch`, `patch_notes_muted`, `patch_notes_seen`, `check_for_updates` and `interface_size`.
+- Releases are built on Ubuntu 22.04 for x86_64 and arm64 and carry `lightforge_linux_x86_64`, `lightforge_linux_arm64`, a .deb for each, and `SHA256SUMS` signed with cosign (`SHA256SUMS.sig`, `SHA256SUMS.pem`). INSTALL.md shows how to check them. glibc 2.35 is still the floor.
+- No more AppImage, tarballs, release .rpm, desktop entry, icons, AppStream file or double-click installer. Fedora keeps COPR; Arch keeps both PKGBUILDs, and `lightforge-bin` now installs the release binary.
+- The installer installs only `lightforge` into `~/.local/bin`, checked against `SHA256SUMS`. `--uninstall` removes it; games and settings stay.
+- Logs are in `~/.local/share/lightforge/logs/lightforge-cli.log`.
+
 ## 1.0.0-beta.11
 
 Lightforge 1.0.0-beta.11 is a fix update, almost all of it from your GitHub issues and bug reports. Addons that need other addons now bring them along, big voice packs install, and Lightforge and Battle.net no longer get in each other's way over the game files. It also adds moving the Wine prefix to another drive and a way to repair Battle.net without losing anything.

@@ -12,7 +12,7 @@ corpus=$(dirname "$0")/corpus
 steam=${STEAM_ROOT:-$HOME/.local/share/Steam}
 
 for t in archive_index idx idx_file_name encoding manifest blte \
-    productdb_decode productdb_splice steam_libraryfolders steam_loginusers steam_shortcuts; do
+    productdb_decode productdb_splice steam_libraryfolders; do
     mkdir -p "$corpus/$t"
 done
 
@@ -34,8 +34,4 @@ if [ -n "$db" ]; then
 fi
 
 [ -f "$steam/steamapps/libraryfolders.vdf" ] && cp "$steam/steamapps/libraryfolders.vdf" "$corpus/steam_libraryfolders/"
-[ -f "$steam/config/loginusers.vdf" ] && cp "$steam/config/loginusers.vdf" "$corpus/steam_loginusers/"
-find "$steam/userdata" -name shortcuts.vdf 2>/dev/null | head -n 3 | while read -r f; do
-    cp "$f" "$corpus/steam_shortcuts/$(basename "$(dirname "$(dirname "$f")")").vdf"
-done
 echo "seeded $corpus"
