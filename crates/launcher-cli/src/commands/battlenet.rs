@@ -168,7 +168,7 @@ pub(crate) fn battlenet_run(ctx: Ctx, proton: Option<String>, product: Option<Pr
     }
 
     println!("running {}{}", exe.display(), if args.is_empty() { String::new() } else { format!(" {}", args.join(" ")) });
-    // The shared Battle.net profile, as the GUI applies it. This is always
+    // The shared Battle.net profile, `battle_net_tweaks`. This is always
     // the client, so the wrappers belong here.
     let shared = AppDirs::discover()
         .ok()

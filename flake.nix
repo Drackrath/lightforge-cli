@@ -1,5 +1,5 @@
 {
-  description = "Lightforge: a native Linux launcher for World of Warcraft and Battle.net";
+  description = "Lightforge: a command-line launcher for World of Warcraft and Battle.net on Linux";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -21,15 +21,11 @@
         default = lightforge;
       });
 
-      devShells = forAllSystems (system: pkgs:
-        let lightforge = self.packages.${system}.lightforge-unwrapped; in
-        {
-          default = pkgs.mkShell {
-            inputsFrom = [ lightforge ];
-            packages = [ pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer ];
-            # Not LD_LIBRARY_PATH, which Proton and the game would inherit.
-            RUSTFLAGS = "-C link-arg=-Wl,-rpath,${lib.makeLibraryPath lightforge.runtimeLibs}";
-          };
-        });
+      devShells = forAllSystems (system: pkgs: {
+        default = pkgs.mkShell {
+          inputsFrom = [ self.packages.${system}.lightforge-unwrapped ];
+          packages = [ pkgs.clippy pkgs.rustfmt pkgs.rust-analyzer ];
+        };
+      });
     };
 }

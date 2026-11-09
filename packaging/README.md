@@ -1,45 +1,30 @@
 # Packaging
 
-Everything a release needs that is not the binaries themselves: the desktop
-entry, the icons, the AppStream metadata, and the three packages built from
-them.
+Everything a release needs besides the `lightforge` binary itself: the
+installer and the package recipes.
 
 ```text
 packaging/
-├── pro.tuxcore.Lightforge.desktop        the menu entry
-├── pro.tuxcore.Lightforge.metainfo.xml   AppStream, for software centres
-├── icons/hicolor/…                       16px → 512px, plus the SVG
-├── appimage/AppRun                       the AppImage's entry: GUI, or `cli …`
-├── installer/
-│   ├── lightforge-installer.desktop      the double-click installer
-│   └── install.sh                        what it runs, fetched from main
+├── installer/install.sh                  the installer, fetched from main
 ├── rpm/lightforge.spec                   the Fedora COPR package, from source
+├── nix/                                  the flake's package
 └── aur/
     ├── lightforge/PKGBUILD               builds from the tagged source
-    └── lightforge-bin/PKGBUILD           installs the released binaries
+    └── lightforge-bin/PKGBUILD           installs the released binary
 ```
 
 ## The installer
 
 Every release is built for x86_64 and, cross-compiled in the same container,
-for aarch64: a tarball and an AppImage each. The `.deb`, the `.rpm`, the COPR
+for aarch64: a tarball each. The `.deb`, the `.rpm`, the COPR
 spec and the PKGBUILDs are x86_64 only. `make release` builds both, and
 `check-binaries` asks the aarch64 build for its `--version` through qemu.
 
-`Lightforge-x86_64.AppImage` carries no version in its name, so the copy a
-user keeps updates in place under the same name and
-`releases/latest/download/Lightforge-x86_64.AppImage` is a stable link.
-`make appimage` puts the two binaries, the menu entry, the icons and the
-AppStream file in an AppDir, packs it with `mksquashfs` inside the build
-container and puts the static type-2 runtime in front, pinned by hash in the
-Makefile. That is all appimagetool does too. No libraries are bundled.
-
-`lightforge-installer.desktop` is a release asset for people who will never
-open a terminal, Steam Deck owners first. Double-clicked, it opens a terminal
-window and runs `install.sh` from the `main` branch on GitHub, which finds the
-newest release, checks it against `SHA256SUMS`, and installs it into the home
-folder: the binaries in `~/.local/bin`, the menu entry and icons under
-`~/.local/share`. Running it again updates.
+`install.sh` finds the newest release, checks its tarball against
+`SHA256SUMS` and puts `lightforge` in `~/.local/bin`. Running it again
+updates; `--uninstall` removes it. It also removes what an install from
+before the GUI was dropped left behind: `lightforge-gui`, its menu entry and
+its icons.
 
 Because it is fetched from `main`, a fix to `install.sh` reaches everyone
 without a release, and nothing in it is reachable before it is merged there.
@@ -47,28 +32,19 @@ To test a change before that, run it straight from the tree:
 `bash packaging/installer/install.sh [tarball]`.
 
 The `.deb` and `.rpm` are not here: their metadata lives in
-`crates/launcher-gui/Cargo.toml`, because `cargo-deb` and `cargo-generate-rpm`
+`crates/launcher-cli/Cargo.toml`, because `cargo-deb` and `cargo-generate-rpm`
 read it from there.
-
-## One string, three places
-
-`pro.tuxcore.Lightforge` is the AppStream component id, the desktop entry's
-basename **and** the window's Wayland `app_id` (`APP_ID` in the GUI's
-`main.rs`). A compositor matches a running window to its installed desktop
-entry by that string and by nothing else, so if one of the three changes and
-the others do not, the taskbar shows a placeholder instead of the icon.
 
 ## Building the packages
 
 ```bash
-make release    # the binaries, in a Debian 12 container (see ../Containerfile)
-make packages   # tarball + AppImage + .deb + .rpm + installer + SHA256SUMS, into target/dist/
+make release    # the binary, in a Debian 12 container (see ../Containerfile)
+make packages   # tarball + .deb + .rpm + SHA256SUMS, into target/dist/
 ```
 
 `make packages` doesn't run `make release` itself, because that would rebuild
-27 MB of GUI three times to make three files from the same two binaries. Run
-`release` first; each package target checks that the binaries are there and
-says so if they aren't.
+three times to make three files from the same binary. Run `release` first;
+each package target checks that the binary is there and says so if it isn't.
 
 Neither `dpkg` nor `rpmbuild` has to be installed: `cargo-deb` and
 `cargo-generate-rpm` write both formats themselves, so an Arch machine can
@@ -101,31 +77,20 @@ podman run --rm -v "$PWD/target/dist:/d:Z" docker.io/library/debian:bookworm \
 
 podman run --rm -v "$PWD/target/dist:/d:Z" registry.fedoraproject.org/fedora:41 \
   sh -c 'dnf install -y /d/lightforge-*.rpm && lightforge --version'
-
-podman run --rm -v "$PWD/packaging:/p:Z" registry.fedoraproject.org/fedora:41 \
-  sh -c 'dnf install -y -q desktop-file-utils appstream &&
-         desktop-file-validate /p/pro.tuxcore.Lightforge.desktop &&
-         appstreamcli validate /p/pro.tuxcore.Lightforge.metainfo.xml'
 ```
-
-All three passed with 1.0.0-beta.4. `appstreamcli --pedantic` has one
-remaining note, that the component id contains capitals. That's a style
-preference (`org.gnome.Software` has them too), not an error.
 
 ## The public mirror
 
 Upstream is Forgejo, but that instance asks for a login for anything except
 `git clone`: no raw files, no API, no release attachments. A package manager
 cannot download from it, so releases are published to a GitHub mirror and
-everything user-facing (the PKGBUILD sources, the AppStream screenshot, the
-homepage field in both packages) points there.
+everything user-facing (the PKGBUILD sources, the installer, the homepage
+field in the packages) points there.
 
 It fails silently, so I only noticed with `1.0.0-beta.2`: an anonymous `GET`
-of a Forgejo raw URL returns **200 with the sign-in page**, not 401. A
-software centre fetching the screenshot that way shows no screenshot and no
-error. So every browser-facing URL in the AppStream file (homepage,
-bugtracker, help, vcs-browser and the screenshot) is a `github.com` or
-`raw.githubusercontent.com` one. The `git clone` URLs in the
+of a Forgejo raw URL returns **200 with the sign-in page**, not 401, so a tool
+downloading from it gets a web page and no error. Every URL a tool downloads
+from is a `github.com` or `raw.githubusercontent.com` one. The `git clone` URLs in the
 docs stay on Forgejo, because cloning works.
 
 Setting it up once:
@@ -152,8 +117,8 @@ current even when a push came from somewhere else.
 
 ```bash
 make check-cli-doc        # docs/CLI.md matches the binary
-make release              # binaries + the glibc floor check
-make packages             # tarball, AppImage, .deb, .rpm, SHA256SUMS
+make release              # the binary + the glibc floor check
+make packages             # tarball, .deb, .rpm, SHA256SUMS
 
 git tag -a v1.0.0-beta.5 -m 'Lightforge 1.0.0-beta.5'
 git push origin v1.0.0-beta.5
@@ -248,8 +213,3 @@ git add PKGBUILD .SRCINFO && git commit -m 'Lightforge 1.0.0-beta.5' && git push
 
 `.SRCINFO` is generated from the PKGBUILD, so it isn't kept in this repo; a
 second copy could get out of sync.
-
-## Flatpak
-
-Not done yet. The app id, the desktop entry and the AppStream file it needs
-are all here and pass validation.

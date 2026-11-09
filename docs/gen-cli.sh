@@ -17,13 +17,13 @@ OUT=docs/CLI.md
 # Command groups, in the order they appear. A command in none of them stops
 # the run: a new subcommand should be filed deliberately, not dropped on the
 # floor because this list was not updated with it.
-group_names='Everyday|Setup, Proton and the prefix|Battle.net|Games: install, update, remove|Addons and settings backups|Catalogue and artwork'
+group_names='Everyday|Setup, Proton and the prefix|Battle.net|Games: install, update, remove|Addons and settings backups|Catalogue'
 group_cmds='paths config doctor status update-check play preflight
 setup proton proton-check proton-install prefix prefix-init prefix-link prefix-move
 battlenet-fetch battlenet-setup battlenet-run
 download verify reindex move uninstall prune compact build-info
 addons addon-search addon-install addon-import addon-update addon-remove addon-adopt backup-list backup-create backup-restore
-products assets'
+products'
 
 all=$("$BIN" --help | awk '/^  [a-z]/ { print $1 }' | grep -v '^help$')
 
@@ -40,8 +40,9 @@ done
     cat <<'HEADER'
 # The Lightforge CLI
 
-Everything the launcher does, without the launcher — and a fair amount it
-doesn't do at all, because this is also the tool the GUI was debugged with.
+`lightforge` is the whole of Lightforge: installing, updating and launching
+games, Battle.net, addons and storage, plus the lower-level tools used to
+debug it.
 
 **`lightforge --help` lists every command**, and `lightforge <command> --help`
 explains one of them in full. That is the authority; this page is the same

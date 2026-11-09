@@ -499,11 +499,6 @@ impl AppDirs {
         self.data.join("logs")
     }
 
-    /// Cache for ETag'd theming assets (logos, backgrounds) and their manifest.
-    pub fn asset_cache_dir(&self) -> PathBuf {
-        self.cache.join("assets")
-    }
-
     /// The download queue as it stood, restored on the next start.
     pub fn queue_file(&self) -> PathBuf {
         self.data.join("queue.toml")

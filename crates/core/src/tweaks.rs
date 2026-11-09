@@ -14,7 +14,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// What Game Settings can set for one product.
+/// The per-game launch settings: `profile.tweaks` for one product.
 ///
 /// Older configs' extra fields are skipped on load and dropped on save.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

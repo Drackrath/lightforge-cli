@@ -2,7 +2,7 @@
 
 <img src="docs/banner.png" alt="Lightforge" width="640">
 
-**A native Linux launcher for World of Warcraft that also runs the rest of Battle.net.**
+**A command-line launcher for World of Warcraft on Linux that also runs the rest of Battle.net.**
 
 [![CI](https://github.com/LightforgeProject/lightforge/actions/workflows/ci.yml/badge.svg)](https://github.com/LightforgeProject/lightforge/actions/workflows/ci.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-E9AB28?style=flat-square)](LICENSE)
@@ -12,19 +12,28 @@
 
 </div>
 
-<img src="docs/play.jpg" alt="The Play page" width="100%">
-
 ---
 
 Lightforge installs, patches, verifies and launches World of Warcraft on Linux
-without the Battle.net client. It speaks Blizzard's own distribution protocols
+without the Battle.net client, from one command-line tool, `lightforge`.
+There is no graphical interface: it works in a terminal, over SSH, and from
+scripts or other launchers. It speaks Blizzard's own distribution protocols
 (TACT and NGDP for the CDN, CASC for local storage), reimplemented in Rust, so
 your game lands in a store the real client can read: point Battle.net at the
 folder and it adopts it, no re-download.
 
 For everything else (Diablo, Overwatch, Hearthstone, StarCraft) it sets up
-one Battle.net prefix and hands the launch to the client. Those games get a
-tile here and start with one press.
+one Battle.net prefix and hands the launch to the client.
+
+```bash
+lightforge doctor                       # what this system has and lacks
+lightforge setup                        # Proton-GE, the prefix, Battle.net
+lightforge download --product wow ~/Games/Blizzard/games/"World of Warcraft"   # install or update Retail
+lightforge play --product wow           # start it
+lightforge battlenet-run --product osi  # hand a game to Battle.net
+```
+
+[docs/CLI.md](docs/CLI.md) lists every command.
 
 ## Install
 
@@ -75,10 +84,8 @@ cd lightforge/packaging/aur/lightforge-bin && makepkg -si
 
 ### SteamOS, Bazzite and everything else
 
-Download `lightforge-installer.desktop` and double-click it. It fetches the
-newest version, verifies it, installs it into your home folder and starts
-Lightforge, no terminal needed. Run it again any time to update. Or from a
-terminal:
+The installer fetches the newest version, verifies it and installs it into
+your home folder. Run it again any time to update:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LightforgeProject/lightforge/main/packaging/installer/install.sh | bash
@@ -92,26 +99,13 @@ sudo rpm-ostree install lightforge
 sudo systemctl reboot
 ```
 
-### AppImage
-
-Download `Lightforge-x86_64.AppImage`, make it executable and start it. It
-updates itself in place. Details in [INSTALL.md](INSTALL.md#appimage). ARM64
-has its own AppImage and tarball; it is
-[experimental](INSTALL.md#arm64).
-
-```bash
-chmod +x Lightforge-x86_64.AppImage && ./Lightforge-x86_64.AppImage
-```
-
-##
-
 ### From source
 
 ```bash
 git clone https://github.com/LightforgeProject/lightforge.git
 cd lightforge
 cargo build --release --locked
-./target/release/lightforge-gui
+./target/release/lightforge doctor
 ```
 
 [**INSTALL.md**](INSTALL.md) has the details: the Steam Deck, the 32-bit
@@ -140,15 +134,13 @@ package Battle.net's installer needs, and how to remove Lightforge again.
 | NixOS | 🟠 | not tested yet |
 
 If you run it on another distro, or on one of the orange ones, tell me how it
-went in [Discord](https://discord.gg/vtTgmUV9Bq) or through the in-app
-reporter (`☰ › Report a bug`).
+went in [Discord](https://discord.gg/vtTgmUV9Bq).
 
 ## Requirements
 
 | | |
 | --- | --- |
 | **OS** | Any current Linux. glibc 2.35+ for the release binaries. |
-| **GPU** | Vulkan if you have it; it falls back to software rendering if you don't. |
 | **32-bit** | Only for Battle.net, whose installer and client are 32-bit. WoW alone doesn't need it. |
 
 Proton-GE is downloaded and verified by Lightforge itself. You don't need
@@ -169,12 +161,10 @@ Steam, Lutris or a system Wine.
 - **Tunes the game** with the CPU performance profile, MangoHud, Proton's
   Wayland backend, optional high-resolution textures and your own environment
   variables.
-- **Sets Battle.net up for you**, then launches its games with one press. The
-  in-game shop works too ([how](TECHDOC.md#the-in-game-shop)).
-- **Plays well on a controller**, with a handheld mode for the Steam Deck and
-  similar devices.
-- **Runs only while it's open:** one native binary, no background service,
-  nothing running when the launcher is closed.
+- **Sets Battle.net up for you**, then hands its games to it. The in-game
+  shop works too ([how](TECHDOC.md#the-in-game-shop)).
+- **Runs only when you run it:** one native binary, no background service,
+  nothing left running when a command ends.
 
 ## What it doesn't do
 
@@ -184,11 +174,10 @@ Steam, Lutris or a system Wine.
   Lightforge manages the prefix, the files and the process around `Wow.exe`,
   never inside it.
 - **No tracking.** No analytics, no crash pings, no account. It talks to
-  Blizzard's CDN for the game, to GitHub for updates, and to Lightforge's
-  own server for artwork and CurseForge lookups (CurseForge's API needs a
-  key that can't live in a public repo). Bug reports only go out when you
-  press Send, and you see the whole report first. Every host and what it
-  sees is listed in [DISCLAIMER.md](DISCLAIMER.md#what-leaves-your-machine).
+  Blizzard's CDN for the game, to GitHub for Proton-GE, and to Lightforge's
+  own server for CurseForge lookups (CurseForge's API needs a key that can't
+  live in a public repo). Every host and what it sees is listed in
+  [DISCLAIMER.md](DISCLAIMER.md#what-leaves-your-machine).
 - **WoW first.** Other Blizzard games are installed and run by Battle.net.
 - **Linux only.**
 
@@ -214,8 +203,7 @@ version is in [RELEASES.md](RELEASES.md).
 
 I work on this in my spare time, so there are no dates:
 
-- A Flatpak, and the AUR once registrations reopen.
-- Adding your games to Steam's library.
+- The AUR once registrations reopen.
 
 If something is missing for you, tell me in [Discord](https://discord.gg/vtTgmUV9Bq).
 
@@ -225,7 +213,7 @@ If something is missing for you, tell me in [Discord](https://discord.gg/vtTgmUV
 | --- | --- |
 | [INSTALL.md](INSTALL.md) | Installing, the Steam Deck, what each distro needs, removing it |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Known problems and what to do about them |
-| [docs/CLI.md](docs/CLI.md) | The command-line tool: every command, generated from the binary |
+| [docs/CLI.md](docs/CLI.md) | Every command, generated from the binary |
 | [TECHDOC.md](TECHDOC.md) | How it works underneath |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Reporting bugs, sending patches, the house rules |
 | [SECURITY.md](SECURITY.md) | Reporting a vulnerability, and how downloads are trusted |

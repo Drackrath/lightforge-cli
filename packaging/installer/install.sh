@@ -1,39 +1,25 @@
 #!/usr/bin/env bash
 # Installs or updates Lightforge for the current user. No root, nothing
-# outside the home folder: the binaries in ~/.local/bin, the menu entry and
-# icons under ~/.local/share, so running it again is an update.
+# outside the home folder: the binary in ~/.local/bin, so running it again is
+# an update.
 #
 #   install.sh                    newest release from GitHub
 #   install.sh <tarball>          a tarball already on disk (testing a build)
 #   install.sh --uninstall        remove it again; games and settings stay
 #
-# Usually run by lightforge-installer.desktop as `curl ... | bash`, so stdin
-# is this script: prompts read from /dev/tty, and everything sits in main(),
-# which only runs once the whole file has arrived.
+# Usually run as `curl ... | bash`, so stdin is this script: everything sits
+# in main(), which only runs once the whole file has arrived.
 
 set -euo pipefail
 
 REPO=LightforgeProject/lightforge
 DATA=${XDG_DATA_HOME:-$HOME/.local/share}
 BIN=$HOME/.local/bin
-APPS=$DATA/applications
-ICONS=$DATA/icons
-ENTRY=pro.tuxcore.Lightforge.desktop
 
 say() { printf '\n==> %s\n' "$*"; }
 
-# Konsole closes the moment the script ends, so whatever was printed last
-# has to wait for the reader.
-pause() {
-    if { : </dev/tty; } 2>/dev/null; then
-        read -r -t "${1:-600}" -p 'Press Enter to close this window.' _ </dev/tty || true
-        echo
-    fi
-}
-
 fail() {
     printf '\nInstall failed: %s\n\n' "$*" >&2
-    pause
     exit 1
 }
 
@@ -43,21 +29,19 @@ need() {
     done
 }
 
-# Plasma and GNOME watch the applications folder themselves; these only make
-# the menu catch up sooner where the tools exist.
-refresh_menu() {
-    command -v update-desktop-database >/dev/null && update-desktop-database -q "$APPS" || true
-    command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 >/dev/null 2>&1 || true
-    command -v kbuildsycoca5 >/dev/null && kbuildsycoca5 >/dev/null 2>&1 || true
+# What an install from before the GUI was removed left behind: its binary,
+# its menu entry and its icons. Removed on install and uninstall alike.
+remove_gui_leftovers() {
+    rm -f "$BIN/lightforge-gui" "$DATA/applications/pro.tuxcore.Lightforge.desktop"
+    find "$DATA/icons/hicolor" -name 'pro.tuxcore.Lightforge.*' -delete 2>/dev/null || true
+    command -v update-desktop-database >/dev/null && update-desktop-database -q "$DATA/applications" 2>/dev/null || true
 }
 
 uninstall() {
     say "Removing Lightforge"
-    rm -f "$BIN/lightforge-gui" "$BIN/lightforge" "$APPS/$ENTRY"
-    find "$ICONS/hicolor" -name 'pro.tuxcore.Lightforge.*' -delete 2>/dev/null || true
-    refresh_menu
+    rm -f "$BIN/lightforge"
+    remove_gui_leftovers
     echo "Done. Your games, the Wine prefix and your settings were left where they are."
-    pause 30
 }
 
 # The newest release's tarball for this processor, prereleases included:
@@ -108,32 +92,18 @@ main() {
 
     tar -xzf "$tarball" -C "$work" || fail "could not unpack $tarball"
     src=$(find "$work" -mindepth 1 -maxdepth 1 -type d -name 'lightforge-*' | head -n 1)
-    [ -n "$src" ] && [ -f "$src/lightforge-gui" ] || fail "that does not look like a Lightforge tarball"
+    [ -n "$src" ] && [ -f "$src/lightforge" ] || fail "that does not look like a Lightforge tarball"
 
     say "Installing into $BIN"
-    install -Dm755 "$src/lightforge-gui" "$BIN/lightforge-gui"
     install -Dm755 "$src/lightforge" "$BIN/lightforge"
-    # The full path: not every desktop session has ~/.local/bin on its PATH,
-    # and an entry whose TryExec is not found is hidden rather than broken.
-    install -Dm644 "$src/$ENTRY" "$APPS/$ENTRY"
-    sed -i "s|=lightforge-gui|=$BIN/lightforge-gui|" "$APPS/$ENTRY"
-    mkdir -p "$ICONS"
-    cp -r "$src/icons/hicolor" "$ICONS/"
-    refresh_menu
+    remove_gui_leftovers
 
-    # The CLI, not the GUI: a GUI from before 1.0.0-beta.5 ignores --version
-    # and opens a window.
     version=$("$BIN/lightforge" --version 2>/dev/null || echo lightforge)
     say "Installed $version"
-    echo "Lightforge is in your application menu (Games)."
-
-    if pgrep -x lightforge-gui >/dev/null 2>&1; then
-        echo "Lightforge is running: close and reopen it to use the new version."
-    else
-        echo "Starting Lightforge."
-        setsid -f "$BIN/lightforge-gui" >/dev/null 2>&1 </dev/null || true
-    fi
-    pause 30
+    case ":$PATH:" in
+        *":$BIN:"*) echo "Run 'lightforge doctor' to check this system, then 'lightforge setup'." ;;
+        *) echo "$BIN is not on your PATH yet; log in again, or run $BIN/lightforge directly." ;;
+    esac
 }
 
 main "$@"

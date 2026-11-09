@@ -8,14 +8,12 @@ pub(crate) fn play(ctx: Ctx, code: ProductCode, proton: Option<String>, dry_run:
     use lightforge_core::config::Config;
     use lightforge_core::preflight::{NoDownloads, Preflight};
 
-    // Through the `C:` symlink. The GUI launches the native path instead,
-    // which the in-game shop needs (see `Layout::wow_drive`).
-    let exe = layout.wow_symlink().join(layout.wow_exe(&code).strip_prefix(layout.wow_install(&code))?);
+    // The native path, not the `C:` symlink, so Wine puts the game on its
+    // own drive ([`Layout::wow_drive`]) and the in-game shop's browser keeps
+    // its GPU child. Verified 2026-10-02, a full checkout.
+    let exe = layout.wow_exe(&code);
     if !exe.is_file() {
-        anyhow::bail!(
-            "no game at {} — is the symlink pointing at an install?",
-            exe.display()
-        );
+        anyhow::bail!("no game at {} — install it first", exe.display());
     }
 
     // Whatever the symlink resolves to has to be visible inside the
@@ -24,14 +22,14 @@ pub(crate) fn play(ctx: Ctx, code: ProductCode, proton: Option<String>, dry_run:
         .unwrap_or_else(|_| layout.wow_install(&code));
 
     let dirs = AppDirs::discover().context("resolving XDG directories")?;
-    let (runner, build) = proton_runner(&layout, proton.as_deref())?;
+    // `--proton`, else the build pinned for this game, else the default.
+    let (runner, build) = proton_runner(&layout, proton.as_deref().or(config.effective_proton(&code)))?;
     let mut runner = runner
         .with_compat_mount(&target)
         // Per product: the prefix is shared.
         .with_shader_cache(dirs.shader_cache_dir(&code));
 
-    // The same per-product settings Game Settings writes. A launcher that honoured them from one entry point and
-    // not the other would make every measurement unreproducible.
+    // The game's own settings, its `profile.tweaks` in config.toml.
     let tweaks = Config::load_or_default(&dirs.config_file())
         .ok()
         .and_then(|config| config.product(&code).map(|p| p.profile.tweaks.clone()))

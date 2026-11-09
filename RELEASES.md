@@ -1,6 +1,15 @@
 # Lightforge release notes
 
 
+## Unreleased
+
+Lightforge is now a command-line program only: the graphical launcher is gone, and `lightforge` is the whole interface. Features that only existed as buttons in the launcher, such as repairing Battle.net, have no command yet.
+
+- Removed the graphical launcher, `lightforge-gui`, with its menu entry, icons and AppStream file, the AppImage and the double-click installer. Releases carry the `lightforge` binary in a tarball, a `.deb` and an `.rpm`; the installer script, the PKGBUILDs, the COPR spec and the Nix flake install only that.
+- Gone with it: the in-app bug reporter, the self-update check and notice, adding Lightforge to Steam, the themed artwork and the `assets` command, and the settings only the window used (`contact`, `minimize_on_launch`, `setup_complete`, `steamos_use`, `patch_notes_muted`, `patch_notes_seen`, `check_for_updates`, `interface_size`, `assets_source`). Old config files still load; those keys are ignored.
+- The binary no longer links libudev: gamepads were the launcher's.
+- Running the installer again replaces an older install and removes the old launcher, its menu entry and icons.
+
 ## 1.0.0-beta.11
 
 Lightforge 1.0.0-beta.11 is a fix update, almost all of it from your GitHub issues and bug reports. Addons that need other addons now bring them along, big voice packs install, and Lightforge and Battle.net no longer get in each other's way over the game files. It also adds moving the Wine prefix to another drive and a way to repair Battle.net without losing anything.

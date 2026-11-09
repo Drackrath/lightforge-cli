@@ -13,16 +13,6 @@ use crate::proton::ProtonPin;
 /// Windows user name inside a Proton prefix.
 const DEFAULT_PREFIX_USER: &str = "steamuser";
 
-/// How Lightforge is used on a SteamOS machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SteamOsUse {
-    /// A Steam Deck or a Steam Machine: controller input.
-    Console,
-    /// SteamOS on a desktop PC: mouse and keyboard.
-    Desktop,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -43,9 +33,6 @@ pub struct Config {
     pub battle_net_proton: ProtonPin,
     /// Fallback Proton build for products that don't pin their own.
     pub default_proton: ProtonPin,
-    /// Where themed branding is read from: a base URL, or a local directory
-    /// for trying out art. Not in the UI; `None` is [`DEFAULT_ASSETS_SOURCE`].
-    pub assets_source: Option<String>,
     /// Base URL of the addon catalog proxy, or a local fixture directory.
     /// `None` disables addon management instead of failing at use.
     pub addon_catalog: Option<String>,
@@ -57,20 +44,12 @@ pub struct Config {
     /// pass. On by default.
     #[serde(default = "yes")]
     pub addon_auto_update: bool,
-    /// Contact for bug reports, as typed. Kept to prefill the dialog; only
-    /// ever sent with a report.
-    #[serde(default)]
-    pub contact: Option<String>,
     /// Cap on game download speed in MB/s (the progress readout's unit).
     /// `None` is unlimited.
     pub download_limit_mbps: Option<u64>,
     /// Whether launching a game also pauses downloads for *other* products.
     /// The launched product's own is always paused.
     pub pause_downloads_while_playing: bool,
-    /// Whether the launcher minimizes once a game is up. Off by default;
-    /// nothing is restored when the game exits.
-    #[serde(default)]
-    pub minimize_on_launch: bool,
     /// Whether Battle.net comes up minimized for a hand-off. On by default,
     /// honoured only when [`crate::battlenet::signs_in_by_itself`].
     #[serde(default = "yes")]
@@ -97,45 +76,18 @@ pub struct Config {
     /// files are downloaded, so it is asked at setup.
     #[serde(default = "default_locale")]
     pub locale: String,
-    /// Whether the first-run wizard has been seen through, "set up later"
-    /// included. [`crate::setup::Status`] knows what is missing.
-    #[serde(default)]
-    pub setup_complete: bool,
-    /// Battle.net was declined during setup, which hides its button and the
-    /// hand-off titles. Reversible from Settings.
+    /// Battle.net is not wanted: `lightforge setup` leaves it out.
     #[serde(default)]
     pub battle_net_declined: bool,
-    /// What a SteamOS machine is used as, asked during setup: nothing on the
-    /// machine tells a Deck from a desktop. `None` elsewhere.
-    #[serde(default)]
-    pub steamos_use: Option<SteamOsUse>,
-    /// Whether the release-notes popup is off for good ("never show this
-    /// again"). Settings › General turns it back on.
-    #[serde(default)]
-    pub patch_notes_muted: bool,
-    /// The version whose notes have already been shown. `None` shows them.
-    #[serde(default)]
-    pub patch_notes_seen: Option<String>,
-    /// Whether to ask GitHub once per start if a newer Lightforge exists. On
-    /// by default, listed in `DISCLAIMER.md`; nothing installs by itself.
-    #[serde(default = "yes")]
-    pub check_for_updates: bool,
     /// How many `WTF/Account` backups each game keeps.
     #[serde(default = "default_backup_keep")]
     pub backup_keep: usize,
-    /// The launcher's size in percent of what the desktop's scaling gives it.
-    /// The window grows with it, never past what fits the screen.
-    #[serde(default = "default_interface_size")]
-    pub interface_size: u16,
     /// Every product Lightforge manages, official and custom alike.
     pub products: Vec<Product>,
     /// Windows programs that run beside a game in its prefix.
     #[serde(default)]
     pub companions: Vec<crate::companion::Companion>,
 }
-
-/// Where themed branding comes from unless `assets_source` says otherwise.
-pub const DEFAULT_ASSETS_SOURCE: &str = "https://lightforge.tuxcore.pro/assets/";
 
 /// Where the addon catalog is read from unless `addon_catalog` says otherwise.
 ///
@@ -158,10 +110,6 @@ fn default_backup_keep() -> usize {
     crate::backup::DEFAULT_KEEP
 }
 
-fn default_interface_size() -> u16 {
-    100
-}
-
 fn default_locale() -> String {
     DEFAULT_LOCALE.to_owned()
 }
@@ -176,28 +124,19 @@ impl Default for Config {
             prefix_user: DEFAULT_PREFIX_USER.to_owned(),
             battle_net_proton: ProtonPin::default(),
             default_proton: ProtonPin::default(),
-            assets_source: None,
             addon_catalog: None,
             addon_channel: crate::addons::Channel::default(),
             addon_auto_update: true,
-            contact: None,
             download_limit_mbps: None,
             pause_downloads_while_playing: true,
-            minimize_on_launch: false,
             battle_net_minimized: true,
             close_battle_net_on_play: false,
             battle_net_in_background: false,
             battle_net_tweaks: crate::tweaks::Tweaks::default(),
             region: crate::tact::version::Region::default(),
             locale: default_locale(),
-            setup_complete: false,
             battle_net_declined: false,
-            steamos_use: None,
-            patch_notes_muted: false,
-            patch_notes_seen: None,
-            check_for_updates: true,
             backup_keep: default_backup_keep(),
-            interface_size: default_interface_size(),
             products: Vec::new(),
             companions: Vec::new(),
         }
@@ -312,7 +251,7 @@ impl Config {
     }
 
     /// The layout this config describes: `blizzard_root` when set, else the
-    /// default. Both front ends resolve it here.
+    /// default. Every command resolves it here.
     pub fn layout(&self) -> Result<crate::paths::Layout, crate::paths::PathError> {
         let layout = match &self.blizzard_root {
             Some(root) => crate::paths::Layout::with_root(root),
@@ -384,23 +323,10 @@ impl Config {
         assigned.or_else(|| self.libraries.iter().find(|l| l.is_default).or(self.libraries.first()))
     }
 
-    /// Where the asset pipeline should read from, if configured.
-    ///
-    /// A scheme makes it a base URL, else a fixture directory; blank is the default.
-    pub fn asset_origin(&self) -> crate::assets::Origin {
-        let source = match self.assets_source.as_deref().map(str::trim) {
-            Some(source) if !source.is_empty() => source,
-            _ => DEFAULT_ASSETS_SOURCE,
-        };
-        match source.contains("://") {
-            true => crate::assets::Origin::Http(source.to_owned()),
-            false => crate::assets::Origin::Dir(PathBuf::from(source)),
-        }
-    }
-
     /// Where to read the addon catalog from.
     ///
-    /// Same shape as [`Config::asset_origin`]; absent is [`DEFAULT_ADDON_CATALOG`].
+    /// A scheme makes it a base URL, else a fixture directory; blank or
+    /// absent is [`DEFAULT_ADDON_CATALOG`].
     pub fn catalog_origin(&self) -> crate::addons::catalog::Origin {
         let source = match self.addon_catalog.as_deref().map(str::trim) {
             Some(source) if !source.is_empty() => source,
@@ -575,19 +501,6 @@ mod tests {
         assert_eq!(config.battle_net_tweaks, crate::tweaks::Tweaks::default());
     }
 
-    // Written as a word a person could type, and absent until answered.
-    #[test]
-    fn the_steamos_answer_is_a_plain_word_and_optional() {
-        let config: Config = toml::from_str("blizzard_root = \"/games/Blizzard\"").unwrap();
-        assert_eq!(config.steamos_use, None);
-
-        let config = Config { steamos_use: Some(SteamOsUse::Console), ..Config::default() };
-        let text = toml::to_string(&config).unwrap();
-        assert!(text.contains("steamos_use = \"console\""), "{text}");
-        let back: Config = toml::from_str(&text).unwrap();
-        assert_eq!(back.steamos_use, Some(SteamOsUse::Console));
-    }
-
     #[test]
     fn the_battle_net_profile_round_trips() {
         let mut config = Config::default();
@@ -676,10 +589,9 @@ mod tests {
     }
 
     #[test]
-    fn the_launch_window_settings_default_the_way_a_fresh_install_behaves() {
+    fn the_battle_net_settings_default_the_way_a_fresh_install_behaves() {
         // A config from before these keeps its old behaviour.
         let old: Config = toml::from_str("prefix_user = \"steamuser\"\n").unwrap();
-        assert!(!old.minimize_on_launch);
         assert!(old.battle_net_minimized);
         // And a config from before the switch leaves the client running.
         assert!(!old.close_battle_net_on_play);
@@ -879,7 +791,6 @@ mod tests {
         let path = dir.join("config.toml");
 
         let mut config = Config::with_default_products();
-        config.assets_source = Some("https://lightforge.tuxcore.pro/assets/".into());
         config.default_proton = ProtonPin::Pinned("GE-Proton11-7".into());
         config.save(&path).unwrap();
 
@@ -931,31 +842,12 @@ mod tests {
             CatalogOrigin::Dir(PathBuf::from("/tmp/fixtures"))
         );
 
-        // Blank is "unset", not "disabled", same rule as assets_source.
+        // Blank is "unset", not "disabled".
         config.addon_catalog = Some("   ".into());
         assert_eq!(
             config.catalog_origin(),
             CatalogOrigin::Http(DEFAULT_ADDON_CATALOG.to_owned())
         );
-    }
-
-    #[test]
-    fn an_asset_source_is_a_url_or_a_fixture_directory() {
-        use crate::assets::Origin;
-
-        let default = Origin::Http(DEFAULT_ASSETS_SOURCE.to_owned());
-        let mut config = Config::default();
-        assert_eq!(config.asset_origin(), default);
-
-        config.assets_source = Some("https://assets.tuxcore.pro/wow/".into());
-        assert!(matches!(config.asset_origin(), Origin::Http(_)));
-
-        config.assets_source = Some("/home/gabriel/lightforge-assets".into());
-        assert!(matches!(config.asset_origin(), Origin::Dir(_)));
-
-        // An empty string is a blank field, not a fixture at the current dir.
-        config.assets_source = Some("  ".into());
-        assert_eq!(config.asset_origin(), default);
     }
 
     #[test]

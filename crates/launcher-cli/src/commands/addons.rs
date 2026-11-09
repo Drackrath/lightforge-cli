@@ -496,8 +496,7 @@ fn settings_backup(layout: &Layout, dirs: &AppDirs, code: &ProductCode) -> backu
 
 /// The configured default addon channel, or stable when there is no config.
 ///
-/// The CLI has no settings UI, so it reads the same `addon_channel` the GUI
-/// writes instead of inventing a second default.
+/// `addon_channel` in config.toml, instead of inventing a second default.
 fn addon_channel(dirs: &AppDirs) -> lightforge_core::addons::Channel {
     Config::load_or_default(&dirs.config_file())
         .map(|config| config.addon_channel)

@@ -1,7 +1,8 @@
 # The Lightforge CLI
 
-Everything the launcher does, without the launcher — and a fair amount it
-doesn't do at all, because this is also the tool the GUI was debugged with.
+`lightforge` is the whole of Lightforge: installing, updating and launching
+games, Battle.net, addons and storage, plus the lower-level tools used to
+debug it.
 
 **`lightforge --help` lists every command**, and `lightforge <command> --help`
 explains one of them in full. That is the authority; this page is the same
@@ -28,7 +29,7 @@ install your config points at, so you rarely have to pass one.
 - [Battle.net](#battlenet)
 - [Games: install, update, remove](#games-install-update-remove)
 - [Addons and settings backups](#addons-and-settings-backups)
-- [Catalogue and artwork](#catalogue-and-artwork)
+- [Catalogue](#catalogue)
 
 ## Everyday
 
@@ -72,7 +73,7 @@ Options:
 ### `lightforge status`
 
 ```text
-Resolve the primary action button's state for a product
+Resolve what a product needs next: install, update, play, or wait
 
 Usage: lightforge status [OPTIONS]
 
@@ -104,7 +105,7 @@ Options:
 ### `lightforge play`
 
 ```text
-Launch the game directly under Proton, the `[ PLAY ]` path.
+Launch the game directly under Proton.
 
 Runs pre-flight first, then starts `Wow.exe` through the prefix's Windows-visible path. Battle.net is not involved.
 
@@ -346,7 +347,7 @@ Options:
       --show-install
           With `--dry-run`, list the install-manifest files this build would extract, and where each would land
       --cancel-after <CANCEL_AFTER>
-          Trip the cancel token after this many seconds, the same path the GUI's pause button takes. For measuring how long a pause takes to come to rest
+          Trip the cancel token after this many seconds, the path a paused download takes. For measuring how long a pause takes to come to rest
   -h, --help
           Print help
 ```
@@ -642,7 +643,7 @@ Options:
   -h, --help               Print help
 ```
 
-## Catalogue and artwork
+## Catalogue
 
 ### `lightforge products`
 
@@ -673,18 +674,4 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
-```
-
-### `lightforge assets`
-
-```text
-Resolve a product's themed branding through the asset pipeline
-
-Usage: lightforge assets [OPTIONS]
-
-Options:
-      --product <PRODUCT>  Product code to theme, e.g. `wow` [default: wow]
-      --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
-      --source <SOURCE>    Base URL or fixture directory. Defaults to `assets_source` in config.toml, else the built-in source
-  -h, --help               Print help
 ```

@@ -51,7 +51,7 @@ impl UpdateStatus {
 /// What a bulk update or update check asks for: every tracked addon that has
 /// not been ignored.
 ///
-/// Shared by both front ends and both operations. An ignored addon can still
+/// Shared by both operations. An ignored addon can still
 /// be asked for by name.
 pub fn update_requests(ledger: &Ledger, default_channel: crate::addons::Channel) -> Vec<Request> {
     requests_for(ledger, default_channel, install::Record::tracks_updates)
