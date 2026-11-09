@@ -39,7 +39,7 @@ const FAILED_EXIT_GRACE: Duration = Duration::from_secs(5);
 pub(super) const STDERR_TAIL: usize = 8 * 1024;
 
 /// How many of those lines the error message shows. The full tail goes into
-/// a debug bundle; the message is a GUI banner.
+/// a debug bundle; the message stays short enough to read at a glance.
 pub(super) const STDERR_LINES_SHOWN: usize = 8;
 
 /// Consecutive successful checks before the install counts as done: the

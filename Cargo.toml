@@ -1,12 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/launcher-cli", "crates/launcher-gui"]
-exclude = ["vendor"]
-
-# Clicks landing off target on Wayland; vendor/iced_winit/PATCHED.md says why
-# and when this can go.
-[patch.crates-io]
-iced_winit = { path = "vendor/iced_winit" }
+members = ["crates/core", "crates/cli"]
 
 [workspace.package]
 version = "1.0.0-beta.11"
@@ -31,53 +25,12 @@ flate2 = "1"
 # source, so no system library is needed at run time.
 liblzma = { version = "0.4", features = ["static"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-# Gamepads, read straight from the kernel. Steam Input only turns a pad into
-# keys under a keyboard layout; under its usual gamepad one a non-Steam game
-# gets a virtual Xbox pad and nothing else. Default features stay on: `wgi`
-# only pulls anything in for Windows, and turning it off is a compile error
-# on every target. On Linux this links libudev.so.1, the one library the
-# release adds to libc and libgcc_s; every systemd distro ships it, SteamOS
-# included.
-gilrs = "0.11"
-# `sysinfo` is for `iced::system::information`: the renderer's own adapter
-# and backend, which a bug report about a game that will not draw needs and
-# which nothing outside the renderer can answer.
-#
-# `image-without-codecs` rather than `image`: the latter turns on every codec
-# of iced's own image 0.25, an AVIF encoder and OpenEXR among them, and was
-# 1.9 MB of the stripped release. iced never decodes for us, so it needs none
-# of them; it keeps 0.25 itself, codec-free, for its own types.
-iced = { version = "0.14", features = ["tokio", "image-without-codecs", "advanced", "canvas", "sysinfo"] }
-# The GUI's one decoder: every picture goes through `art.rs` into an RGBA
-# handle. Not the 0.25 iced carries, because only 0.24's JPEG decoder can
-# decode at a DCT scale. JPEG and PNG are all the asset manifest and
-# Battle.net's marks serve; `ico` (which brings `bmp`) and `webp`
-# are for the report's screenshot picker, which offers them. None of the
-# four pulls in a crate of its own.
-image = { version = "0.24", default-features = false, features = ["jpeg", "png", "ico", "webp"] }
 libc = "0.2"
 md5 = "0.8"
-open = "5"
-# The file picker: the XDG desktop portal, spoken directly. `async-std` rather
-# than the default `tokio` feature only to leave zbus exactly as iced already
-# builds it, so this adds no second D-Bus stack.
-ashpd = { version = "0.12", default-features = false, features = ["async-std"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 sha2 = "0.10"
-# Default features are deliberately off, and **no transport feature at all**:
-# the launcher implements sentry's `Transport` over its own `core::net::Http`
-# (see `report.rs`). `sentry/reqwest` wants reqwest 0.13 beside our 0.12, and
-# its `rustls` feature switches the *shared* rustls onto `aws-lc-rs`, so the
-# release was building a second HTTP client, a platform certificate verifier
-# and a whole second crypto provider in C for a client we already had.
-# `panic` would install a panic hook, and a report is only ever sent with
-# someone's explicit consent; `release-health` sends a session envelope per
-# launch that GlitchTip has no use for.
-sentry = { version = "0.49", default-features = false, features = ["backtrace", "contexts"] }
+# Process scanning for pre-flight (`preflight::scan`).
 sysinfo = { version = "0.36", default-features = false, features = ["system"] }
-# For the screenshot a report carries: GlitchTip drops envelope attachments,
-# so the image travels inside the event as a data URI.
-base64 = "0.22"
 # Builds the tests' fixtures; core decodes BLTE itself (`tact::blte`).
 blte = "0.4"
 tact-parser = "0.4"
@@ -91,14 +44,8 @@ tokio = { version = "1", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "registry", "tracing-log"] }
 # Closing the window Battle.net raises during a hand-off (`battlenet::window`).
-# Already in the lock through winit. No features: the pure-Rust connection,
-# so nothing links libxcb.
+# No features: the pure-Rust connection, so nothing links libxcb.
 x11rb = { version = "0.13", default-features = false }
-# Release ordering for the update check. Already in the lock as a build
-# dependency of `sentry-contexts`, pulls nothing of its own, and knows the
-# prerelease precedence rules a string compare gets wrong: `beta.10` is newer
-# than `beta.2`, and `1.0.0` is newer than both.
-semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -113,6 +60,8 @@ zstd = { version = "0.14", default-features = false }
 [profile.release]
 lto = "thin"
 codegen-units = 1
+# The release assets are the bare binary, so it ships without symbols.
+strip = "symbols"
 
 [workspace.lints.rust]
 # Set by `cargo fuzz` for the harness in `core/src/fuzzing.rs`.

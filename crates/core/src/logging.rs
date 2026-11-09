@@ -69,7 +69,6 @@ pub fn init(dirs: &AppDirs, name: &str) -> Result<PathBuf, LogError> {
     let filter = Targets::new()
         .with_default(LevelFilter::WARN)
         .with_target("lightforge_core", level)
-        .with_target("lightforge_gui", level)
         .with_target("lightforge_cli", level)
         .with_target("lightforge", level);
 

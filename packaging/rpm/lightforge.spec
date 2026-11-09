@@ -18,7 +18,7 @@
 Name:           lightforge
 Version:        %{lua: print((rpm.expand("%{upstream_version}"):gsub("-", "~")))}
 Release:        1%{?dist}
-Summary:        Install, update and play World of Warcraft on Linux
+Summary:        Command-line tool to install, update and play World of Warcraft on Linux
 
 License:        GPL-3.0-or-later
 URL:            https://github.com/LightforgeProject/lightforge
@@ -33,23 +33,14 @@ ExclusiveArch:  x86_64
 BuildRequires:  cargo >= 1.90
 BuildRequires:  rust >= 1.90
 BuildRequires:  gcc
-# gilrs (gamepads) finds libudev through pkg-config.
-BuildRequires:  pkgconfig(libudev)
-BuildRequires:  desktop-file-utils
-BuildRequires:  libappstream-glib
-
-# Vulkan, Wayland and X11 are opened at run time rather than linked, so the
-# automatic requires see only libc, libgcc_s and libudev.
-Requires:       fontconfig
 # Proton's launcher is a Python script.
 Requires:       python3
-Requires:       hicolor-icon-theme
 # The Battle.net installer is the one 32-bit binary in the whole flow.
 Suggests:       wine.i686
 Suggests:       mangohud
 
 %description
-Lightforge installs, updates and launches World of Warcraft on Linux through
+Lightforge is a command-line tool that installs, updates and launches World of Warcraft on Linux through
 Proton, downloading straight from Blizzard's CDN, and hands every other
 Battle.net game to the Battle.net client in the same prefix. It also manages
 addons and per-game Proton versions.
@@ -62,24 +53,9 @@ export CARGO_HOME=%{_builddir}/cargo-home
 cargo build --release --locked
 
 %install
-install -Dm755 target/release/lightforge-gui %{buildroot}%{_bindir}/lightforge-gui
-install -Dm755 target/release/lightforge     %{buildroot}%{_bindir}/lightforge
-
-install -Dm644 packaging/pro.tuxcore.Lightforge.desktop \
-  %{buildroot}%{_datadir}/applications/pro.tuxcore.Lightforge.desktop
-install -Dm644 packaging/pro.tuxcore.Lightforge.metainfo.xml \
-  %{buildroot}%{_metainfodir}/pro.tuxcore.Lightforge.metainfo.xml
-
-for size in 16 22 24 32 48 64 128 256 512; do
-  install -Dm644 packaging/icons/hicolor/${size}x${size}/apps/pro.tuxcore.Lightforge.png \
-    %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/pro.tuxcore.Lightforge.png
-done
-install -Dm644 packaging/icons/hicolor/scalable/apps/pro.tuxcore.Lightforge.svg \
-  %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/pro.tuxcore.Lightforge.svg
+install -Dm755 target/release/lightforge %{buildroot}%{_bindir}/lightforge
 
 %check
-desktop-file-validate %{buildroot}%{_datadir}/applications/pro.tuxcore.Lightforge.desktop
-appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/pro.tuxcore.Lightforge.metainfo.xml
 export CARGO_HOME=%{_builddir}/cargo-home
 # The tests that reach Blizzard's CDN are #[ignore]d; what runs here is
 # offline and takes seconds.
@@ -87,12 +63,8 @@ cargo test --release --locked --workspace
 
 %files
 %license LICENSE
-%doc README.md RELEASES.md TROUBLESHOOTING.md docs/CLI.md
+%doc README.md RELEASES.md docs/TROUBLESHOOTING.md docs/CLI.md
 %{_bindir}/lightforge
-%{_bindir}/lightforge-gui
-%{_datadir}/applications/pro.tuxcore.Lightforge.desktop
-%{_metainfodir}/pro.tuxcore.Lightforge.metainfo.xml
-%{_datadir}/icons/hicolor/*/apps/pro.tuxcore.Lightforge.*
 
 %changelog
 * Sat Nov 07 2026 Kenny <onlyusemycontroler@gmail.com> - 1.0.0~beta.11-1

@@ -325,7 +325,7 @@ fn nvidia(version: &str) -> Vec<Check> {
             "nvidia driver",
             Status::Warn,
             version,
-            Some("Wayland needs 555 or newer for explicit sync; see TROUBLESHOOTING.md".to_owned()),
+            Some("Wayland needs 555 or newer for explicit sync; see docs/TROUBLESHOOTING.md".to_owned()),
         ),
         false => check("nvidia driver", Status::Ok, version, None),
     };

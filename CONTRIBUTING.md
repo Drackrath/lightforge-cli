@@ -7,15 +7,14 @@ The fastest way to reach me is **[Discord](https://discord.gg/vtTgmUV9Bq)**.
 
 ## Reporting a bug
 
-Use the built-in reporter: **☰ › Report a bug**. It collects the version,
-your GPU and driver, the session type and the last things the launcher did,
-and you can drop a screenshot onto the window. It shows you everything before
-it sends anything.
+Open an issue or post in Discord with:
 
-If the launcher won't start at all, post in Discord with whatever it printed
-in the terminal.
+- `lightforge --version` and the output of `lightforge doctor`;
+- the command you ran and everything it printed;
+- the end of `~/.local/share/lightforge/logs/lightforge-cli.log`, run with
+  `LIGHTFORGE_LOG=debug` if you can reproduce it.
 
-[TROUBLESHOOTING.md](TROUBLESHOOTING.md) covers the problems I already know
+[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) covers the problems I already know
 about, so have a look there first.
 
 ## Suggesting something
@@ -33,7 +32,7 @@ cargo build
 cargo test
 ```
 
-[INSTALL.md](INSTALL.md) lists the prerequisites. There are very few.
+[INSTALL.md](docs/INSTALL.md) lists the prerequisites. There are very few.
 
 Before you open a pull request:
 
@@ -89,7 +88,7 @@ I'm one person, so give me a few days before you assume I've forgotten you.
 Poke me in Discord if I have.
 
 **Small things are very welcome**: typos, wording, a doc that's wrong. One in
-particular: [INSTALL.md](INSTALL.md) lists the 32-bit package Battle.net's
+particular: [INSTALL.md](docs/INSTALL.md) lists the 32-bit package Battle.net's
 installer needs on four distributions, and **only the Fedora line has been
 tested on a real machine**. If you run Debian, Arch or openSUSE and can
 confirm or correct yours, that helps a lot.

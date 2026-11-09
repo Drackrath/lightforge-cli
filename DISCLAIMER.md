@@ -50,8 +50,8 @@ would without me. Lightforge couldn't log in as you if it wanted to; it has
 nothing to log in with.
 
 It does read one thing Battle.net leaves on disk: the client's cached copy of
-Blizzard's public game catalogue, for game names, which tile a game belongs to,
-and a pre-install's release date. It skips anything in it that depends on your
+Blizzard's public game catalogue, for game names, which game family a product
+belongs to, and a pre-install's release date. It skips anything in it that depends on your
 account, such as which games you own.
 
 ## The honest bit about risk
@@ -74,21 +74,13 @@ to lose.
 
 ## What leaves your machine
 
-Short version: **nothing about you, unless you press Send on a bug report.**
+Short version: **nothing about you.**
 
-There's no analytics, no usage tracking and no crash pings. There isn't even a
-panic handler that could send something without you — reports exist only
-because somebody filled in a form.
-
-A few requests do go out when the launcher starts, and none says anything
-about you beyond the IP address any request reveals: it fetches the game
-artwork it shows you, it asks GitHub whether a newer Lightforge has been
-released, and if you manage addons with it, it asks for their newest
-versions. The GitHub check is a public release listing, and Settings ›
-General turns it off; nothing is downloaded from it unless you press Update
-on the notice it shows. The addon check only runs for addons set to update
-themselves; turning automatic addon updates off in Settings stops it. All
-of them are in the table below.
+There's no analytics, no usage tracking, no crash pings and no bug reporter.
+Nothing runs in the background: Lightforge only makes a request while a
+command you started is running, and none of those requests says anything about
+you beyond the IP address any request reveals. All of them are in the table
+below.
 
 CurseForge lookups go through Lightforge's own server rather than straight
 to CurseForge because CurseForge's API needs a key, and a key can't sit in a
@@ -102,29 +94,15 @@ and a list is more useful:
 | Who it talks to | When | What they see |
 | --- | --- | --- |
 | `*.version.battle.net`, `level3.blizzard.com` | installing, updating, checking for patches | Blizzard's own CDN, same as their client |
-| `lightforge.tuxcore.pro` | artwork, addon search and updates, matching addons you already have | your IP address, what you searched for, and which addons you have (their ids, or the fingerprints of their folders) |
+| `lightforge.tuxcore.pro` | addon search and updates, matching addons you already have | your IP address, what you searched for, and which addons you have (their ids, or the fingerprints of their folders) |
 | `api.mmoui.com`, `cdn.wowinterface.com`, `api.tukui.org`, `api.github.com`, `edge.forgecdn.net` | installing or updating addons | your IP address, by those providers |
 | `api.github.com` | checking for new Proton-GE builds | a public release listing |
-| `api.github.com` | once at startup, checking whether a newer Lightforge was released | a public release listing |
-| `github.com`, `raw.githubusercontent.com` | **only when you press Update** on that notice: the new release, its checksums, or the Arch PKGBUILD | your IP address |
-| `bugs.k3nny.tech` | **only when you press Send** | exactly the report shown to you first |
 
-About that last row, since it's the only one that carries anything personal:
+The installer script also talks to `api.github.com` and `github.com`, to find
+and download the newest release and its checksums, but only when you run it.
 
-- The report shows you its whole contents before it goes anywhere — your
-  message, the recent log lines, your GPU and driver, the launcher version,
-  and the screenshot if you attached one.
-- Your IP is not recorded with it (`send_default_pii = false`), and your
-  machine's hostname is replaced with `redacted` before sending — desktop
-  hostnames are usually somebody's actual name.
-- A screenshot you attach is uploaded to `lightforge.tuxcore.pro` and the
-  report carries a link to it. Have a look at what's on your screen first.
-- Sending the same report twice in five minutes is refused, and if it can't
-  be sent at all it's copied to your clipboard instead of being queued
-  somewhere.
-
-If you'd rather read this as code than as a table: it's all in
-`crates/launcher-gui/src/report.rs` and `crates/core/src/net.rs`.
+If you'd rather read this as code than as a table: start with the HTTP
+client in `crates/core/src/net.rs`.
 
 ## Other people's work
 
@@ -136,13 +114,8 @@ his project under his licence; Lightforge just fetches and manages it.
 **Addons** come from CurseForge, WoWInterface, Tukui and GitHub under their own
 terms. I don't host addon code, I don't review it, and I can't vouch for it —
 an addon is someone else's program running inside your game. Where an author
-has asked not to be distributed by third-party tools, Lightforge says so and
-sends you to their page instead of downloading it anyway.
-
-**The icons** in the launcher are [Lucide](https://lucide.dev) (ISC) and
-[Simple Icons](https://simpleicons.org) (CC0), listed file by file in
-`crates/launcher-gui/assets/README.md`. The Discord and X marks are links to
-those services and nothing more — neither company endorses this.
+has asked not to be distributed by third-party tools, Lightforge says so
+instead of downloading it anyway.
 
 ## Questions, or something you want taken down
 

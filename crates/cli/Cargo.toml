@@ -1,0 +1,89 @@
+[package]
+name = "lightforge-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+# Doubles as the .deb/.rpm one-line summary, so it is written for someone
+# reading a package list rather than for a crate index.
+description = "Command-line tool to install, update and play World of Warcraft on Linux"
+
+[[bin]]
+name = "lightforge"
+path = "src/main.rs"
+
+[dependencies]
+lightforge-core.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+libc.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+# ---------------------------------------------------------------------------
+# Distribution packages.
+#
+# `cargo-deb` writes the .deb natively in `.github/workflows/release.yml`,
+# from the binary built on the Ubuntu 22.04 runner: a package built from a
+# host build on a newer distro would demand that host's glibc.
+# `cargo-generate-rpm` reads the rpm metadata the same way, for a local
+# `cargo generate-rpm -p crates/cli`; the COPR spec builds its own.
+# ---------------------------------------------------------------------------
+
+[package.metadata.deb]
+# The deb is named for the project, not for the crate that carries the
+# metadata; `lightforge-cli` would be a strange thing to `apt install`.
+name = "lightforge"
+maintainer = "Kenny <onlyusemycontroler@gmail.com>"
+license-file = ["../../LICENSE", "0"]
+section = "games"
+priority = "optional"
+extended-description = """\
+Lightforge talks to Blizzard's content servers directly — the same TACT/CASC \
+pipeline the real client uses — so it installs, patches, verifies and \
+launches every flavour of World of Warcraft from the command line, without \
+Battle.net in the way. Battle.net is still managed for you if you want it: \
+one Wine prefix, a verified Proton-GE build and the client. Addons, \
+per-game Proton pinning and graphics tuning are built in."""
+# Not `$auto`: that resolves against the host's libraries, and this package is
+# built on Ubuntu 22.04. The floor is stated instead, and `make check-glibc` is what
+# proves the binary honours it.
+depends = "libc6 (>= 2.35), libgcc-s1, python3"
+# Battle.net's installer is the one 32-bit binary in the sequence. WoW itself
+# never needs this, so it is a suggestion rather than a dependency.
+suggests = "wine32"
+assets = [
+    ["target/release/lightforge", "usr/bin/", "755"],
+    ["../../README.md", "usr/share/doc/lightforge/", "644"],
+    ["../../RELEASES.md", "usr/share/doc/lightforge/", "644"],
+    ["../../docs/TROUBLESHOOTING.md", "usr/share/doc/lightforge/", "644"],
+    ["../../docs/CLI.md", "usr/share/doc/lightforge/", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "lightforge"
+url = "https://github.com/LightforgeProject/lightforge"
+summary = "Command-line tool to install, update and play World of Warcraft on Linux"
+# Stated rather than discovered, for the same reason as the deb's `depends`.
+auto-req = "disabled"
+# There are no scriptlets, so nothing in the package needs a shell.
+require-sh = false
+assets = [
+    { source = "target/release/lightforge", dest = "/usr/bin/lightforge", mode = "755" },
+    { source = "LICENSE", dest = "/usr/share/licenses/lightforge/LICENSE", mode = "644", doc = true },
+    { source = "README.md", dest = "/usr/share/doc/lightforge/README.md", mode = "644", doc = true },
+    { source = "RELEASES.md", dest = "/usr/share/doc/lightforge/RELEASES.md", mode = "644", doc = true },
+    { source = "docs/TROUBLESHOOTING.md", dest = "/usr/share/doc/lightforge/TROUBLESHOOTING.md", mode = "644", doc = true },
+    { source = "docs/CLI.md", dest = "/usr/share/doc/lightforge/CLI.md", mode = "644", doc = true },
+]
+
+[package.metadata.generate-rpm.requires]
+glibc = ">= 2.35"
+# Proton's launcher is a Python script.
+python3 = "*"
+
+[lints]
+workspace = true
