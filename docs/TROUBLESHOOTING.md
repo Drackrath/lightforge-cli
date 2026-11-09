@@ -2,7 +2,7 @@
 
 Everything on this page has happened, to me, to a test VM or to someone who
 told me about it. I only add problems somebody actually hit, so if yours is
-missing, tell me in [Discord](https://discord.gg/vtTgmUV9Bq) and I'll add it.
+missing, open an [issue](https://github.com/Drackrath/lightforge-cli/issues) and I'll add it.
 
 Start with `lightforge doctor`. It checks most of the things on this page and
 gives you a report you can paste (`--json` for a machine-readable one).
@@ -197,4 +197,4 @@ For more detail, run the command with `LIGHTFORGE_LOG=debug`.
 ## Something that isn't on this page
 
 Open an issue with the output of `lightforge doctor`, the command you ran and
-what it printed, and the end of `lightforge-cli.log`. Or come and talk: **[discord.gg/vtTgmUV9Bq](https://discord.gg/vtTgmUV9Bq)**.
+what it printed, and the end of `lightforge-cli.log`.

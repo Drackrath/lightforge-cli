@@ -7,18 +7,16 @@ version = "1.0.0-beta.11"
 edition = "2021"
 rust-version = "1.90"
 license = "GPL-3.0-or-later"
-repository = "https://git.tuxcore.pro/kenny/lightforge.git"
-# The public mirror rather than the line above: the Forgejo instance upstream
-# lives on wants a login for anything but `git clone`, and a homepage that
-# sends a stranger to a sign-in form is worse than no homepage. This is what
-# the packages print as the project's address.
-homepage = "https://github.com/LightforgeProject/lightforge"
+repository = "https://github.com/Drackrath/lightforge-cli"
+homepage = "https://github.com/Drackrath/lightforge-cli"
 
 [workspace.dependencies]
 lightforge-core = { path = "crates/core" }
 
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+# `lightforge completions`.
+clap_complete = "4"
 directories = "5"
 flate2 = "1"
 # Proton-CachyOS ships .tar.xz. Builds the reference liblzma from vendored

@@ -454,14 +454,34 @@ pub struct AppDirs {
     data: PathBuf,
 }
 
+/// Environment variables that move one of [`AppDirs`]' directories, for a
+/// front end that embeds Lightforge and keeps its own state elsewhere.
+pub const CONFIG_DIR_VAR: &str = "LIGHTFORGE_CONFIG_DIR";
+pub const DATA_DIR_VAR: &str = "LIGHTFORGE_DATA_DIR";
+pub const CACHE_DIR_VAR: &str = "LIGHTFORGE_CACHE_DIR";
+
 impl AppDirs {
+    /// The XDG directories, each overridable by its environment variable
+    /// ([`CONFIG_DIR_VAR`], [`DATA_DIR_VAR`], [`CACHE_DIR_VAR`]). With all
+    /// three set, no home directory is needed.
     pub fn discover() -> Result<Self, PathError> {
+        Self::discover_with(|name| std::env::var_os(name))
+    }
+
+    /// [`AppDirs::discover`], reading the overrides through `var`. An empty
+    /// value is no override.
+    pub fn discover_with(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Result<Self, PathError> {
+        let set = |name: &str| var(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+        let (config, cache, data) = (set(CONFIG_DIR_VAR), set(CACHE_DIR_VAR), set(DATA_DIR_VAR));
+        if let (Some(config), Some(cache), Some(data)) = (&config, &cache, &data) {
+            return Ok(Self::with_dirs(config, cache, data));
+        }
         let dirs = directories::ProjectDirs::from("io", "Tuxcore", "Lightforge")
             .ok_or(PathError::NoHomeDirectory)?;
         Ok(Self {
-            config: dirs.config_dir().to_path_buf(),
-            cache: dirs.cache_dir().to_path_buf(),
-            data: dirs.data_dir().to_path_buf(),
+            config: config.unwrap_or_else(|| dirs.config_dir().to_path_buf()),
+            cache: cache.unwrap_or_else(|| dirs.cache_dir().to_path_buf()),
+            data: data.unwrap_or_else(|| dirs.data_dir().to_path_buf()),
         })
     }
 
@@ -580,6 +600,26 @@ pub enum Repaired {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn each_app_dir_follows_its_own_override() {
+        use super::*;
+        let vars = |name: &str| match name {
+            CONFIG_DIR_VAR => Some("/x/config".into()),
+            DATA_DIR_VAR => Some("/x/data".into()),
+            CACHE_DIR_VAR => Some("".into()),
+            _ => None,
+        };
+        let dirs = AppDirs::discover_with(vars).unwrap();
+        assert_eq!(dirs.config_file(), PathBuf::from("/x/config/config.toml"));
+        assert_eq!(dirs.log_dir(), PathBuf::from("/x/data/logs"));
+        // Empty is no override.
+        assert_ne!(dirs.cache_dir(), Path::new(""));
+
+        let all = |name: &str| Some(format!("/y/{name}").into());
+        let dirs = AppDirs::discover_with(all).unwrap();
+        assert_eq!(dirs.cache_dir(), Path::new("/y/LIGHTFORGE_CACHE_DIR"));
+    }
+
     /// A directory writable through its subdirectories that refuses a file
     /// of its own: an install root from another tool.
     #[test]

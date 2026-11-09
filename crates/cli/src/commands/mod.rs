@@ -10,6 +10,10 @@ pub(crate) mod download;
 pub(crate) mod addons;
 pub(crate) mod storage;
 pub(crate) mod inspect;
+pub(crate) mod output;
+pub(crate) mod capabilities;
+pub(crate) mod settings;
+pub(crate) mod library;
 
 /// Clap's check on every product code argument: a custom code becomes a
 /// folder name, so it is held to the same rule as one in the config.

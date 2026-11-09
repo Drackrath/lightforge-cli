@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-REPO=LightforgeProject/lightforge
+REPO=Drackrath/lightforge-cli
 BIN=$HOME/.local/bin
 
 say() { printf '\n==> %s\n' "$*"; }

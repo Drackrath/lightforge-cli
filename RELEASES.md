@@ -9,9 +9,15 @@ Lightforge is now a command-line tool only. The graphical launcher is gone, and 
 - Removed the `lightforge assets` command.
 - Removed the config keys `assets_source`, `contact`, `minimize_on_launch`, `patch_notes_muted`, `patch_notes_seen`, `check_for_updates` and `interface_size`.
 - Releases are built on Ubuntu 22.04 for x86_64 and arm64 and carry `lightforge_linux_x86_64`, `lightforge_linux_arm64`, a .deb for each, and `SHA256SUMS` signed with cosign (`SHA256SUMS.sig`, `SHA256SUMS.pem`). INSTALL.md shows how to check them. glibc 2.35 is still the floor.
-- No more AppImage, tarballs, release .rpm, desktop entry, icons, AppStream file or double-click installer. Fedora keeps COPR; Arch keeps both PKGBUILDs, and `lightforge-bin` now installs the release binary.
+- No more AppImage, tarballs, release .rpm, desktop entry, icons, AppStream file or double-click installer. The COPR spec stays in the repository; Arch keeps both PKGBUILDs, and `lightforge-bin` now installs the release binary.
 - The installer installs only `lightforge` into `~/.local/bin`, checked against `SHA256SUMS`. `--uninstall` removes it; games and settings stay.
 - Logs are in `~/.local/share/lightforge/logs/lightforge-cli.log`.
+- Battle.net is optional and stays in the background. `setup` no longer installs it; `setup --battlenet` does, for the games other than WoW. `play <game>` starts WoW directly, and hands every other game to the client: started in the tray, signed in by itself (its own form shows once, the first time), given the launch, its window closed again as soon as it maps, and the game waited on. `install <game>` opens the client's own install flow for those games; `list`, `info` and `available` read what it has installed from Agent's registry, with `"via": "battle.net"`.
+- New: `-j/--json` on every command, with typed exit codes and errors as one JSON line (`{"error","type","hint","fix"}`); long operations stream NDJSON progress on stderr and end with one result line on stdout.
+- New: `capabilities`, which describes every command, flag, event, error type and exit code offline, for front ends.
+- New: `list`, `info`, `available`, `install`, `update`, `running` and `stop`. `play` takes the product as an argument (`lightforge play wow`) and exits with the game's own exit code.
+- New: `config show` and per-setting `config` commands (`download-limit`, `proton`, `addon-channel`, `addon-auto-update`, `pause-downloads-while-playing`, `region`, `locale`, `game`). Bare `config` now prints the loaded configuration instead of the defaults.
+- New: `-v/-vv/-vvv` logs to stderr, `completions <shell>`, and `LIGHTFORGE_CONFIG_DIR`, `LIGHTFORGE_DATA_DIR` and `LIGHTFORGE_CACHE_DIR` to move all state.
 
 ## 1.0.0-beta.11
 

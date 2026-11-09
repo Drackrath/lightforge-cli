@@ -41,7 +41,7 @@ Anyone can check a download against the signature:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem --certificate-identity-regexp '^https://github\.com/LightforgeProject/lightforge/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem --certificate-identity-regexp '^https://github\.com/Drackrath/lightforge-cli/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 The `.deb` metadata lives in `crates/cli/Cargo.toml`, because `cargo-deb`
@@ -94,38 +94,18 @@ podman run --rm -v "$PWD/dist:/d:Z" docker.io/library/debian:bookworm \
   sh -c 'apt-get update -qq && apt-get install -y /d/lightforge_*.deb && lightforge --version'
 ```
 
-## The public mirror
+## Upstream
 
-Upstream is Forgejo, but that instance asks for a login for anything except
-`git clone`: no raw files, no API, no release attachments. A package manager
-cannot download from it, so releases are published to a GitHub mirror and
-everything user-facing (the PKGBUILD sources, the installer, the homepage
-field in the packages) points there.
-
-It fails silently, so I only noticed with `1.0.0-beta.2`: an anonymous `GET`
-of a Forgejo raw URL returns **200 with the sign-in page**, not 401, so a
-tool downloading from it gets a web page and no error. Every URL a tool
-downloads from is a `github.com` or `raw.githubusercontent.com` one.
-
-Setting it up once:
+This repository is a CLI-only fork of
+[Lightforge](https://github.com/LightforgeProject/lightforge). Releases are
+published from `github.com/Drackrath/lightforge-cli`, and every URL a tool
+downloads from (the installer, the PKGBUILD sources, the spec) points there.
+Upstream is kept as a second remote:
 
 ```bash
-# first create an empty repo at github.com/LightforgeProject/lightforge:
-# no README, no licence, nothing to merge
-git remote add github git@github.com:LightforgeProject/lightforge.git
-git push github main
+git remote add upstream https://github.com/LightforgeProject/lightforge.git
+git fetch upstream
 ```
-
-Then either keep pushing to both by hand, or make one `git push` do it:
-
-```bash
-git remote set-url --add --push origin https://git.tuxcore.pro/kenny/lightforge.git
-git remote set-url --add --push origin git@github.com:LightforgeProject/lightforge.git
-```
-
-Forgejo can also do this itself under **Settings → Mirror Settings → Push
-Mirror**, with a GitHub token that has `repo` scope. That keeps the mirror
-current even when a push came from somewhere else.
 
 ## Cutting a release
 
@@ -163,12 +143,8 @@ glibc floor the release binaries keep does not apply to it.
 `.copr/Makefile` is COPR's entry point: it downloads that archive and packs the
 source RPM.
 
-Users install it with:
-
-```bash
-sudo dnf copr enable simplykenny/lightforge
-sudo dnf install lightforge
-```
+This fork has no COPR project yet; once one is set up as below, users install
+it with `sudo dnf copr enable <owner>/lightforge && sudo dnf install lightforge`.
 
 **The project, set up once** at copr.fedorainfracloud.org:
 
@@ -177,7 +153,7 @@ sudo dnf install lightforge
   fetches the crates against the tag's `Cargo.lock`, and without network the
   build dies at the first one.
 - Packages → New Package → **SCM**: clone URL
-  `https://github.com/LightforgeProject/lightforge`, committish `main`,
+  `https://github.com/Drackrath/lightforge-cli`, committish `main`,
   build method **make_srpm**. Leave the spec field empty: `.copr/Makefile`
   names it.
 
@@ -206,7 +182,7 @@ upload from. Both PKGBUILDs work today, and until the AUR reopens they are how
 you install on Arch:
 
 ```bash
-git clone https://github.com/LightforgeProject/lightforge.git
+git clone https://github.com/Drackrath/lightforge-cli.git
 cd lightforge/packaging/aur/lightforge-bin   # or ../lightforge to build it
 makepkg -si
 ```

@@ -15,6 +15,7 @@ use lightforge_core::ProductCode;
 
 mod cli;
 mod commands;
+mod error;
 
 use cli::{Cli, Command};
 
@@ -34,25 +35,96 @@ fn restore_sigpipe() {
 async fn main() -> std::process::ExitCode {
     use lightforge_core::advice::{advise, Fix};
 
-    match run().await {
+    restore_sigpipe();
+    let (cli, name) = match parse() {
+        Ok(parsed) => parsed,
+        Err(code) => return code,
+    };
+    let json = cli.json;
+    commands::output::set_json(json);
+
+    match run(cli, name).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
-        // What returning the error from `main` printed, then what to do about
-        // it, when that is known.
+        // Said everything already, e.g. the game's own exit code from `play`.
+        Err(error) if error.downcast_ref::<error::ExitWith>().is_some() => {
+            let code = error.downcast_ref::<error::ExitWith>().map_or(1, |e| e.0);
+            std::process::ExitCode::from(u8::try_from(code).unwrap_or(1))
+        }
         Err(error) => {
-            eprintln!("Error: {error:?}");
-            tracing::error!("{}", lightforge_core::error::chain(error.as_ref()));
-            if let Some(advice) = advise(error.as_ref()) {
-                eprintln!("\nhint: {}", advice.todo);
-                match advice.fix {
-                    Some(Fix::CopyCommand(command)) => eprintln!("      {command}"),
-                    Some(Fix::DeepScan) => eprintln!("      lightforge verify --deep --repair"),
-                    Some(Fix::FreshProton(version)) => eprintln!("      lightforge proton-install {version}"),
-                    _ => {}
+            tracing::error!(target: lightforge_core::logging::FILE_ONLY, "{}", lightforge_core::error::chain(error.as_ref()));
+            let kind = error::classify(&error);
+            if json {
+                // One line, so it stays valid beside an NDJSON stream.
+                commands::output::print_json_line(&error::error_json(&error));
+            } else {
+                // What returning the error from `main` printed, then what to
+                // do about it, when that is known.
+                eprintln!("Error: {error:?}");
+                if let Some(advice) = advise(error.as_ref()) {
+                    eprintln!("\nhint: {}", advice.todo);
+                    match advice.fix {
+                        Some(Fix::CopyCommand(command)) => eprintln!("      {command}"),
+                        Some(Fix::DeepScan) => eprintln!("      lightforge verify --deep --repair"),
+                        Some(Fix::FreshProton(version)) => eprintln!("      lightforge proton-install {version}"),
+                        _ => {}
+                    }
                 }
             }
-            std::process::ExitCode::FAILURE
+            std::process::ExitCode::from(u8::try_from(kind.exit_code()).unwrap_or(1))
         }
     }
+}
+
+/// The command line, and the subcommand's name. `--help` and `--version`
+/// print and exit 0; a usage error exits 2, as one JSON line with `--json`.
+fn parse() -> Result<(Cli, String), std::process::ExitCode> {
+    use clap::{CommandFactory, FromArgMatches};
+    let parsed = Cli::command()
+        .try_get_matches()
+        .and_then(|matches| Ok((Cli::from_arg_matches(&matches)?, matches.subcommand_name().unwrap_or_default().to_owned())));
+    parsed.map_err(|e| {
+        use clap::error::ErrorKind as Clap;
+        let json = std::env::args().skip(1).any(|a| a == "--json" || a == "-j");
+        match e.kind() {
+            Clap::DisplayHelp | Clap::DisplayVersion => e.exit(),
+            _ if json => {
+                let message = e.render().to_string();
+                let first = message.lines().next().unwrap_or_default().trim_start_matches("error: ");
+                commands::output::print_json_line(&serde_json::json!({
+                    "error": first,
+                    "type": error::ErrorKind::InvalidInput,
+                    "hint": error::ErrorKind::InvalidInput.hint(),
+                    "fix": null,
+                }));
+                std::process::ExitCode::from(2)
+            }
+            _ => e.exit(),
+        }
+    })
+}
+
+/// Commands that print their own `--json` output. Every other one runs with
+/// stdout on stderr under `--json`, and ends with a plain result line.
+fn speaks_json(command: &Command) -> bool {
+    matches!(
+        command,
+        Command::Config { .. }
+            | Command::Doctor
+            | Command::Capabilities { .. }
+            | Command::Completions { .. }
+            | Command::List { .. }
+            | Command::Info { .. }
+            | Command::Available { .. }
+            | Command::Install { .. }
+            | Command::Update { .. }
+            | Command::Running
+            | Command::Stop { .. }
+            | Command::Paths
+            | Command::Status { .. }
+            | Command::Play { .. }
+            | Command::Download { .. }
+            | Command::Verify { .. }
+    )
 }
 
 /// What every command starts from: where things are, and the settings.
@@ -61,12 +133,37 @@ struct Ctx {
     config: Config,
 }
 
-async fn run() -> Result<()> {
-    restore_sigpipe();
-    let cli = Cli::parse();
+async fn run(cli: Cli, name: String) -> Result<()> {
+    use clap::CommandFactory;
+
+    // Offline and self-contained: no config is read for these.
+    match &cli.command {
+        Command::Capabilities { path } => return commands::capabilities::capabilities(path.clone()),
+        Command::Completions { shell } => {
+            clap_complete::generate(*shell, &mut Cli::command(), "lightforge", &mut std::io::stdout());
+            return Ok(());
+        }
+        _ => {}
+    }
+
+    // Destructive commands need `--yes` with `--json`.
+    match &cli.command {
+        Command::Move { yes, .. } => commands::output::require_yes("move a game", *yes)?,
+        Command::Uninstall { yes, .. } => commands::output::require_yes("uninstall", *yes)?,
+        Command::Prune { yes, .. } => commands::output::require_yes("prune", *yes)?,
+        Command::Compact { yes, .. } => commands::output::require_yes("compact", *yes)?,
+        _ => {}
+    }
+
+    let dirs = AppDirs::discover().context("resolving XDG directories")?;
+
+    // To the log file, and to stderr at the `-v` level. A missing log is not
+    // worth failing a command for.
+    if let Err(e) = lightforge_core::logging::init_with_stderr(&dirs, "lightforge-cli", Some(cli.verbose)) {
+        eprintln!("warning: logging disabled: {}", lightforge_core::error::chain(&e));
+    }
 
     // An unreadable config stops every command.
-    let dirs = AppDirs::discover().context("resolving XDG directories")?;
     let config = Config::load_or_default(&dirs.config_file())
         .with_context(|| format!("reading {}", dirs.config_file().display()))?;
 
@@ -77,17 +174,31 @@ async fn run() -> Result<()> {
         None => config.layout().context("resolving the Blizzard root")?,
     };
 
-    // Only to a file, never to the terminal the command is printing on. A
-    // missing log is not worth failing a command for.
-    if let Err(e) = lightforge_core::logging::init(&dirs, "lightforge-cli") {
-        eprintln!("warning: logging disabled: {}", lightforge_core::error::chain(&e));
+    let legacy = cli.json && !speaks_json(&cli.command);
+    let quiet = legacy.then(commands::output::StdoutToStderr::new);
+    let result = dispatch(cli, Ctx { layout, config }).await;
+    drop(quiet);
+    if legacy && result.is_ok() {
+        commands::output::print_result_line(serde_json::json!({ "command": name, "status": "ok" }));
     }
+    result
+}
 
-    let ctx = Ctx { layout, config };
+async fn dispatch(cli: Cli, ctx: Ctx) -> Result<()> {
     match cli.command {
+        Command::Capabilities { path } => commands::capabilities::capabilities(path),
+        // Answered in `run`, before any config is read.
+        Command::Completions { .. } => Ok(()),
         Command::Paths => commands::info::paths(ctx),
-        Command::Config => commands::info::config(),
-        Command::Doctor { json } => commands::info::doctor(ctx, json),
+        Command::Config { command } => commands::settings::config(ctx, command),
+        Command::Doctor => commands::info::doctor(ctx, commands::output::json()),
+        Command::List { installed, offline } => commands::library::list(ctx, installed, offline).await,
+        Command::Info { products, offline } => commands::library::info(ctx, products, offline).await,
+        Command::Available { product } => commands::library::available(ctx, product),
+        Command::Install { product, library, locale, dry_run } => commands::library::install(ctx, product, library, locale, dry_run).await,
+        Command::Update { product } => commands::library::update(ctx, product).await,
+        Command::Running => commands::library::running(ctx),
+        Command::Stop { product, force, yes } => commands::library::stop(ctx, product, force, yes),
         Command::Proton => commands::proton::proton(),
         Command::ProtonCheck => commands::proton::proton_check().await,
         Command::ProtonInstall { version } => commands::proton::proton_install(version).await,
@@ -104,7 +215,10 @@ async fn run() -> Result<()> {
         } => commands::battlenet::battlenet_setup(ctx, proton, locale, installer, timeout),
         Command::BattlenetConfig => commands::battlenet::battlenet_config(ctx),
         Command::BattlenetRun { proton, product, exec, uri, install_game, skip_preflight } => commands::battlenet::battlenet_run(ctx, proton, product, exec, uri, install_game, skip_preflight),
-        Command::Play { product, proton, dry_run } => commands::play::play(ctx, product, proton, dry_run),
+        Command::Play { game, product, proton, dry_run } => {
+            let product = game.or(product).unwrap_or_else(|| ProductCode::from("wow".to_owned()));
+            commands::play::play(ctx, product, proton, dry_run)
+        }
         Command::Preflight { proton, product, dry_run, grace } => commands::play::preflight(ctx, proton, product, dry_run, grace),
         Command::CascVerify { src, dst, sample } => commands::inspect::casc_verify(src, dst, sample),
         Command::CascRebuild { src, dst, percent } => commands::inspect::casc_rebuild(src, dst, percent),
@@ -163,8 +277,8 @@ async fn run() -> Result<()> {
             commands::storage::drop_optional(ctx, product, tag, keep, path, yes).await
         }
         Command::Compact { path, yes } => commands::storage::compact(ctx, path, yes),
+        Command::Setup { status, battlenet, proton } => commands::proton::setup(ctx, status, battlenet, proton).await,
         Command::ProductDb { path, products, account_country, geo_country, agent_tags, dry_run } => commands::battlenet::product_db(ctx, path, products, account_country, geo_country, agent_tags, dry_run),
-        Command::Setup { status, proton } => commands::proton::setup(ctx, status, proton).await,
         Command::Products { region, codes, all, concurrency } => commands::info::products(region, codes, all, concurrency).await,
         Command::Status { product, region, offline } => commands::info::status(ctx, product, region, offline).await,
         Command::UpdateCheck { path, product, region } => commands::info::update_check(ctx, path, product, region).await,

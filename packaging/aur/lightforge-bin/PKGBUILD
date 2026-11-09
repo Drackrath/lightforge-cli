@@ -10,9 +10,9 @@ pkgrel=1
 # See the note in the `lightforge` PKGBUILD for why the version loses its
 # hyphen here.
 _tag=v1.0.0-beta.11
-pkgdesc='Command-line tool to install, update and play World of Warcraft on Linux'
+pkgdesc='Command-line launcher for World of Warcraft and the other Blizzard games on Linux'
 arch=('x86_64')
-url='https://github.com/LightforgeProject/lightforge'
+url='https://github.com/Drackrath/lightforge-cli'
 license=('GPL-3.0-or-later')
 depends=('glibc' 'gcc-libs' 'python')
 optdepends=(
@@ -27,7 +27,7 @@ conflicts=('lightforge')
 # builds an empty `-debug` package out of what it does not find.
 options=('!debug' '!strip')
 source=("lightforge-${_tag#v}::$url/releases/download/$_tag/lightforge_linux_x86_64"
-        "LICENSE-${_tag#v}::https://raw.githubusercontent.com/LightforgeProject/lightforge/$_tag/LICENSE")
+        "LICENSE-${_tag#v}::https://raw.githubusercontent.com/Drackrath/lightforge-cli/$_tag/LICENSE")
 # Of the binary attached to the release, as published in its SHA256SUMS.
 # Fill in with `updpkgsums` once the release exists.
 sha256sums=('SKIP' 'SKIP')

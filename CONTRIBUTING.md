@@ -3,11 +3,11 @@
 Thanks for looking. Lightforge is a one-person project, so bug reports and
 patches both help a lot.
 
-The fastest way to reach me is **[Discord](https://discord.gg/vtTgmUV9Bq)**.
+The way to reach me is **[GitHub issues](https://github.com/Drackrath/lightforge-cli/issues)**.
 
 ## Reporting a bug
 
-Open an issue or post in Discord with:
+Open an issue with:
 
 - `lightforge --version` and the output of `lightforge doctor`;
 - the command you ran and everything it printed;
@@ -19,15 +19,15 @@ about, so have a look there first.
 
 ## Suggesting something
 
-Open an issue or post it in Discord. One thing to know first: Lightforge is
-WoW-first, and other Blizzard games are handed to Battle.net. I'm unlikely to
+Open an issue. One thing to know first: Lightforge is WoW-first, and other
+Blizzard games are handed to Battle.net, which only it can sign in. I'm unlikely to
 take ideas that turn it into a general game manager.
 
 ## Working on the code
 
 ```bash
-git clone https://git.tuxcore.pro/kenny/lightforge.git
-cd lightforge
+git clone https://github.com/Drackrath/lightforge-cli.git
+cd lightforge-cli
 cargo build
 cargo test
 ```
@@ -67,13 +67,12 @@ caused it, and run the target again.
 
 ## Pull requests
 
-**Talk to me first** if it's more than a small fix, in an issue or on
-Discord. I have opinions about how this project should work, and a short chat
+**Talk to me first** in an issue if it's more than a small fix. I have opinions about how this project should work, and a short chat
 up front saves us both from a pull request I can't merge.
 
 Then:
 
-- Branch off `dev`, one change per pull request. `main` is the last release.
+- One change per pull request, against `main`.
   Two unrelated fixes in one branch can't be merged until both are ready.
 - Say in the description what it does, why, and how you tested it. "Ran the
   tests" is fine; "installed Classic Era on a second drive and it worked" is
@@ -85,7 +84,6 @@ Then:
   since the comment is what the next person reads.
 
 I'm one person, so give me a few days before you assume I've forgotten you.
-Poke me in Discord if I have.
 
 **Small things are very welcome**: typos, wording, a doc that's wrong. One in
 particular: [INSTALL.md](docs/INSTALL.md) lists the 32-bit package Battle.net's
@@ -93,9 +91,9 @@ installer needs on four distributions, and **only the Fedora line has been
 tested on a real machine**. If you run Debian, Arch or openSUSE and can
 confirm or correct yours, that helps a lot.
 
-The repository lives on my own Forgejo at `git.tuxcore.pro`, and you need an
-account there to open a pull request. If that's a hassle, send a patch or a
-branch link in Discord and I'll take it from there.
+Pull requests go to [Drackrath/lightforge-cli](https://github.com/Drackrath/lightforge-cli).
+Changes that aren't about the CLI belong upstream, in
+[Lightforge](https://github.com/LightforgeProject/lightforge).
 
 ## House rules
 

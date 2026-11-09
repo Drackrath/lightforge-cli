@@ -59,6 +59,19 @@ pub fn advise(error: &(dyn Error + 'static)) -> Option<Advice> {
     None
 }
 
+/// Every link of `error`'s chain, outermost first, the way [`advise`] walks
+/// it: through `#[error(transparent)]` wrappers too, whose inner error
+/// `source` alone would skip. For a front end classifying an error by type.
+pub fn causes<'a>(error: &'a (dyn Error + 'static)) -> Vec<&'a (dyn Error + 'static)> {
+    let mut out = Vec::new();
+    let mut next = Some(error);
+    while let Some(error) = next {
+        out.push(error);
+        next = transparent(error).or_else(|| error.source());
+    }
+    out
+}
+
 /// The advice for one link of the chain, ignoring what it wraps.
 fn recognise(error: &(dyn Error + 'static)) -> Option<Advice> {
     use crate::tact;
@@ -396,6 +409,17 @@ mod tests {
         };
         let advice = advise(&error).unwrap();
         assert_eq!(advice.fix, Some(Fix::FreshProton("GE-Proton11-7".to_owned())));
+    }
+
+    #[test]
+    fn causes_see_through_transparent_wrappers() {
+        let error = crate::proton::ProtonError::Net(NetError::Status {
+            url: "https://api.github.com".to_owned(),
+            status: 429,
+        });
+        let found = causes(&error);
+        assert_eq!(found.len(), 2);
+        assert!(matches!(found[1].downcast_ref::<NetError>(), Some(NetError::Status { status: 429, .. })));
     }
 
     #[test]

@@ -228,13 +228,16 @@ pub(crate) fn prefix_link(ctx: Ctx) -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn setup(ctx: Ctx, status: bool, proton: Option<String>) -> Result<()> {
+pub(crate) async fn setup(ctx: Ctx, status: bool, battlenet: bool, proton: Option<String>) -> Result<()> {
     let Ctx { layout, .. } = ctx;
     use lightforge_core::config::Config;
     use lightforge_core::setup::{self, Event};
 
     let dirs = AppDirs::discover().context("resolving XDG directories")?;
-    let config = Config::load_or_default(&dirs.config_file())?;
+    let mut config = Config::load_or_default(&dirs.config_file())?;
+    // WoW needs no client: Battle.net is only provisioned when asked for,
+    // for this run only, so nothing is written back.
+    config.battle_net_declined = !battlenet;
     let current = setup::Status::inspect(&layout, &dirs, &config);
 
     let mark = |done: bool| if done { "ok " } else { "-- " };
@@ -252,9 +255,13 @@ pub(crate) async fn setup(ctx: Ctx, status: bool, proton: Option<String>) -> Res
         current.prefix.prefix.display()
     );
     println!(
-        "{}battle.net      {}",
+        "{}battle.net      {}{}",
         mark(current.battle_net),
-        layout.battle_net_dir().display()
+        layout.battle_net_dir().display(),
+        match (current.battle_net, battlenet) {
+            (false, false) => "  (only for games other than WoW: setup --battlenet)",
+            _ => "",
+        }
     );
     println!("   builds seen     {}", current.installed.len());
     println!(

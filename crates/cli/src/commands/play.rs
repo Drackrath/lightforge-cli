@@ -2,8 +2,14 @@
 
 use super::{managed_products, print_preflight, proton_runner};
 use crate::*;
+use std::os::fd::AsFd;
 
 pub(crate) fn play(ctx: Ctx, code: ProductCode, proton: Option<String>, dry_run: bool) -> Result<()> {
+    // Only WoW has a login screen of its own; every other game signs in
+    // through the client.
+    if lightforge_core::product::Kind::of(&code) == lightforge_core::product::Kind::HandOff {
+        return super::battlenet::hand_off(ctx, code, proton, dry_run);
+    }
     let Ctx { layout, config } = ctx;
     use lightforge_core::config::Config;
     use lightforge_core::preflight::{NoDownloads, Preflight};
@@ -12,11 +18,12 @@ pub(crate) fn play(ctx: Ctx, code: ProductCode, proton: Option<String>, dry_run:
     // (see `Layout::wow_drive`).
     let exe = layout.wow_symlink().join(layout.wow_exe(&code).strip_prefix(layout.wow_install(&code))?);
     if !exe.is_file() {
-        anyhow::bail!(
-            "no game at {} — is the symlink pointing at an install?",
-            exe.display()
-        );
+        return Err(crate::error::typed(
+            crate::error::ErrorKind::NotFound,
+            format!("no game at {} — is the symlink pointing at an install?", exe.display()),
+        ));
     }
+    let json = super::output::json();
 
     // Whatever the symlink resolves to has to be visible inside the
     // prefix, and it is not necessarily under the games root.
@@ -41,14 +48,28 @@ pub(crate) fn play(ctx: Ctx, code: ProductCode, proton: Option<String>, dry_run:
         runner = runner.with_env(key, value);
     }
 
-    println!("using {} ({})", build.version, build.path.display());
-    println!("install {}", target.display());
-    println!("running {}", exe.display());
     let wrappers = tweaks.wrappers(&tools);
-    if !wrappers.is_empty() {
-        let names: Vec<String> =
-            wrappers.iter().map(|w| w.display().to_string()).collect();
-        println!("through  {}", names.join(" "));
+    if json {
+        if dry_run {
+            super::output::print_result_line(serde_json::json!({
+                "product": code.as_str(),
+                "status": "dry_run",
+                "proton": build.version,
+                "install": target,
+                "executable": exe,
+                "wrappers": wrappers,
+            }));
+            return Ok(());
+        }
+    } else {
+        println!("using {} ({})", build.version, build.path.display());
+        println!("install {}", target.display());
+        println!("running {}", exe.display());
+        if !wrappers.is_empty() {
+            let names: Vec<String> =
+                wrappers.iter().map(|w| w.display().to_string()).collect();
+            println!("through  {}", names.join(" "));
+        }
     }
     if dry_run {
         return Ok(());
@@ -59,19 +80,47 @@ pub(crate) fn play(ctx: Ctx, code: ProductCode, proton: Option<String>, dry_run:
         .with_background_client(config.battle_net_in_background)
         .run(&runner, &layout, Some(&code), &mut NoDownloads)
         .context("pre-flight cleanup")?;
-    print_preflight(&report);
+    if !json {
+        print_preflight(&report);
+    }
 
-    let status = lightforge_core::tweaks::wrapped(
+    let mut command = lightforge_core::tweaks::wrapped(
         runner.command("run", &exe, Vec::<String>::new()),
         &wrappers,
-    )
-    .status()
-    .context("launching the game")?;
-    match status.code() {
-        Some(0) | None => println!("exited"),
-        Some(code) => println!("exited with code {code}"),
+    );
+    if json {
+        // stdout is the result's; the game's own output goes with the logs.
+        command.stdout(std::process::Stdio::from(std::io::stderr().as_fd().try_clone_to_owned()?));
     }
-    Ok(())
+    let mut child = command.spawn().context("launching the game")?;
+    if json {
+        super::output::eprint_json_line(&serde_json::json!({
+            "event": "running",
+            "product": code.as_str(),
+            "pid": child.id(),
+        }));
+    }
+    let status = child.wait().context("waiting for the game")?;
+    // The game's own exit code is the process's; a signal is 128 + it.
+    let exit = status
+        .code()
+        .or_else(|| std::os::unix::process::ExitStatusExt::signal(&status).map(|s| 128 + s))
+        .unwrap_or(0);
+    match json {
+        true => super::output::print_result_line(serde_json::json!({
+            "product": code.as_str(),
+            "status": "exited",
+            "exit_code": exit,
+        })),
+        false => match exit {
+            0 => println!("exited"),
+            code => println!("exited with code {code}"),
+        },
+    }
+    match exit {
+        0 => Ok(()),
+        code => Err(crate::error::ExitWith(code).into()),
+    }
 }
 
 pub(crate) fn preflight(ctx: Ctx, proton: Option<String>, code: Option<ProductCode>, dry_run: bool, grace: u64) -> Result<()> {

@@ -1,7 +1,7 @@
 # Disclaimer
 
 The boring-but-important page. I've tried to write it the way I'd explain it
-to someone in Discord rather than the way a lawyer would, and nothing here is
+to someone in a chat rather than the way a lawyer would, and nothing here is
 meant to be taken on trust — the source is right there, and I've pointed at
 the relevant files wherever it helps.
 
@@ -119,7 +119,7 @@ instead of downloading it anyway.
 
 ## Questions, or something you want taken down
 
-Come and say so: **[discord.gg/vtTgmUV9Bq](https://discord.gg/vtTgmUV9Bq)**.
+Say so in a **[GitHub issue](https://github.com/Drackrath/lightforge-cli/issues)**.
 That goes for anything on this page — if you represent a rightsholder and
 something here is wrong, I'd much rather hear it directly and fix it than find
 out some other way.

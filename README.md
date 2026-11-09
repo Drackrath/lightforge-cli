@@ -2,255 +2,286 @@
 
 <img src="docs/banner.png" alt="Lightforge" width="640">
 
-**A command-line launcher for World of Warcraft on Linux that also runs the rest of Battle.net.**
+# lightforge-cli
 
-[![CI](https://github.com/LightforgeProject/lightforge/actions/workflows/ci.yml/badge.svg)](https://github.com/LightforgeProject/lightforge/actions/workflows/ci.yml)
-[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-E9AB28?style=flat-square)](LICENSE)
+**A command-line launcher for Blizzard games on Linux. World of Warcraft without the Battle.net client; every other game with the client kept in the background.**
+
+[![CI](https://github.com/Drackrath/lightforge-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Drackrath/lightforge-cli/actions/workflows/ci.yml)
+[![Release](https://github.com/Drackrath/lightforge-cli/actions/workflows/release.yml/badge.svg)](https://github.com/Drackrath/lightforge-cli/releases)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-E9AB28?style=flat-square)](LICENSE)
 [![Status: beta](https://img.shields.io/badge/status-1.0.0--beta.11-00B4FF?style=flat-square)](RELEASES.md)
-[![Linux](https://img.shields.io/badge/platform-Linux-8A94A3?style=flat-square)](#install)
-[![Discord](https://img.shields.io/badge/chat-Discord-5865F2?style=flat-square)](https://discord.gg/vtTgmUV9Bq)
+[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-orange?style=flat-square)](https://www.rust-lang.org/)
 
 </div>
 
+> [!WARNING]
+> **An independent, unofficial project**, not affiliated with, endorsed by, or
+> sponsored by Blizzard Entertainment. It downloads the game from Blizzard's
+> own CDN and runs it under Proton; you sign in on the game's own login
+> screen, or on Battle.net's own form. Lightforge never sees your password.
+> Use it at your own risk. See [DISCLAIMER.md](DISCLAIMER.md).
+
+lightforge-cli is a headless, CLI-only fork of
+[Lightforge](https://github.com/LightforgeProject/lightforge). It speaks
+Blizzard's distribution protocols itself (TACT and NGDP for the CDN, CASC for
+local storage), reimplemented in Rust, so a game lands in the same store
+layout the official client uses and starts directly under Proton.
+
+There is no GUI: one binary, `lightforge`, that works over SSH, in a script,
+or as the backend of another launcher. Every command speaks `--json`.
+
+```bash
+lightforge setup                 # Proton-GE and the Wine prefix
+lightforge install wow           # into the default library
+lightforge play wow              # no Battle.net involved
+
+lightforge setup --battlenet     # once, for the other games
+lightforge play pro              # Overwatch, through Battle.net in the tray
+```
+
 ---
 
-Lightforge installs, patches, verifies and launches World of Warcraft on Linux
-without the Battle.net client. It speaks Blizzard's own distribution protocols
-(TACT and NGDP for the CDN, CASC for local storage), reimplemented in Rust, so
-your game lands in a store the real client can read: point Battle.net at the
-folder and it adopts it, no re-download.
+## Contents
 
-For everything else (Diablo, Overwatch, Hearthstone, StarCraft) it sets up
-one Battle.net prefix and hands the launch to the client with
-`lightforge battlenet-run`.
+- [Why lightforge-cli?](#why-lightforge-cli)
+- [Install](#install)
+- [Usage](#usage)
+- [Scripting and front ends](#scripting-and-front-ends)
+- [Configuration](#configuration)
+- [What it doesn't do](#what-it-doesnt-do)
+- [Documentation](#documentation)
+- [Credits](#credits)
+- [Legal](#legal)
 
-It is one binary, `lightforge`, used from a terminal. [docs/CLI.md](docs/CLI.md) lists
-every command.
+---
+
+## Why lightforge-cli?
+
+- **No client in the way for WoW.** No Battle.net, no Electron, no 32-bit
+  Wine libraries. WoW is installed and patched by Lightforge and launched as
+  `Wow.exe` under Proton-GE, which Lightforge downloads and verifies itself.
+  You don't need Steam, Lutris or a system Wine.
+- **The client only where it can't be avoided.** Diablo, Overwatch,
+  Hearthstone, StarCraft, Call of Duty and the rest sign in through Battle.net,
+  and their anti-cheat expects it, so Lightforge hands them to the real
+  client rather than imitating it: started in the tray, given the launch, its
+  window closed as soon as it appears, the game waited on. It is installed
+  only if you ask for it.
+- **Every WoW flavour.** Retail, Classic, Classic Era, Anniversary and WoW:
+  Forever, with their PTR and beta branches. Resumable downloads,
+  pre-downloads before a patch, and verification of every stored byte.
+- **Scriptable.** Global `--json` with typed exit codes, NDJSON progress on
+  stderr, and a `capabilities` command that describes the whole interface
+  offline.
+- **Small.** One static-ish binary that links only libc, libm and libgcc_s.
+  Nothing keeps running after a command exits.
+- **The rest of WoW life:** addons from CurseForge, WoWInterface, Tukui and
+  GitHub (search, install, update, WoWUp import, adopting hand-installed
+  ones), `WTF/Account` backups, games on any drive (`move`), and per-game
+  Proton, environment and MangoHud/Wayland tweaks.
 
 ## Install
 
-Releases are on the
-[releases page](https://github.com/LightforgeProject/lightforge/releases):
-the raw binary for x86_64 and arm64, a `.deb` per architecture, and a signed
-`SHA256SUMS`.
+Releases carry the raw binary for x86_64 and arm64, a `.deb` per
+architecture, and a cosign-signed `SHA256SUMS`, all built on Ubuntu 22.04
+(glibc 2.35 or newer).
 
-### Any distribution, SteamOS, Bazzite
-
-The installer puts `lightforge` in `~/.local/bin`, checks it against
-`SHA256SUMS`, needs no root, and updates when run again:
+**Any distribution** (installs to `~/.local/bin`, verifies the checksum, no
+root; run it again to update, add `-s -- --uninstall` to remove):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LightforgeProject/lightforge/main/packaging/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Drackrath/lightforge-cli/main/packaging/install.sh | bash
 ```
 
-`bash -s -- --uninstall` instead of `bash` removes it again.
-
-Or take the binary itself:
+**The binary itself:**
 
 ```bash
-curl -fLo lightforge https://github.com/LightforgeProject/lightforge/releases/latest/download/lightforge_linux_x86_64
-chmod +x lightforge
+curl -fLo lightforge https://github.com/Drackrath/lightforge-cli/releases/latest/download/lightforge_linux_x86_64
+chmod +x lightforge && sudo mv lightforge /usr/local/bin/
 ```
 
-### Debian, Ubuntu, Linux Mint, Pop!_OS
-
-Download the `.deb`, then:
+**Debian, Ubuntu, Mint, Pop!_OS:** download the `.deb` from the
+[releases page](https://github.com/Drackrath/lightforge-cli/releases), then
 
 ```bash
 sudo apt install ./lightforge_*_amd64.deb
 ```
 
-### Fedora
-
-From [COPR](https://copr.fedorainfracloud.org/coprs/simplykenny/lightforge/),
-which keeps it updated with the rest of your system:
+**Arch and derivatives** (not on the AUR):
 
 ```bash
-sudo dnf copr enable simplykenny/lightforge
-sudo dnf install lightforge
+git clone https://github.com/Drackrath/lightforge-cli.git
+cd lightforge-cli/packaging/aur/lightforge && makepkg -si
 ```
 
-Bazzite/Fedora Atomic specific:
+**NixOS / Nix:**
 
 ```bash
-sudo dnf5 copr enable simplykenny/lightforge
-sudo rpm-ostree install lightforge
-sudo systemctl reboot
+nix run github:Drackrath/lightforge-cli -- doctor
+nix profile install github:Drackrath/lightforge-cli
 ```
 
-### Arch Linux, CachyOS, EndeavourOS, Manjaro, Omarchy
-
-There's a PKGBUILD in the repository (AUR registrations are closed, so it isn't
-on the AUR yet):
+**From source** (Rust 1.90+):
 
 ```bash
-git clone https://github.com/LightforgeProject/lightforge.git
-cd lightforge/packaging/aur/lightforge-bin && makepkg -si
-```
-
-### NixOS
-
-```bash
-nix profile install github:LightforgeProject/lightforge
-```
-
-##
-
-### From source
-
-```bash
-git clone https://github.com/LightforgeProject/lightforge.git
-cd lightforge
+git clone https://github.com/Drackrath/lightforge-cli.git
+cd lightforge-cli
 cargo build --release --locked -p lightforge-cli
-./target/release/lightforge --help
+make install PREFIX=~/.local
 ```
 
-`make install PREFIX=~/.local` installs it.
-
-### Verifying a release
-
-In the folder you downloaded into:
+**Verifying a release**, in the folder you downloaded into:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem --certificate-identity-regexp '^https://github\.com/LightforgeProject/lightforge/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem \
+  --certificate-identity-regexp '^https://github\.com/Drackrath/lightforge-cli/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-[**INSTALL.md**](docs/INSTALL.md) has the details: the Steam Deck, the 32-bit
-package Battle.net's installer needs, and how to remove Lightforge again.
+WoW needs nothing else. The Battle.net client, for the other games, needs your
+distribution's 32-bit Wine libraries; `lightforge doctor` names the package.
+[docs/INSTALL.md](docs/INSTALL.md) has the details per distro and how to
+remove everything again.
 
-## First steps
+## Usage
 
 ```bash
-lightforge doctor                           # what this system has and lacks
-lightforge setup                            # Proton-GE, the prefix, Battle.net
-lightforge download ~/Games/Blizzard/games/"World of Warcraft" --product wow
-lightforge play --product wow
+lightforge doctor                    # what this system has and lacks
+lightforge setup                     # Proton-GE + the prefix (setup --status to check)
+lightforge list                      # configured games, installed or not, update state
+lightforge install wow_classic_era   # into a configured library
+lightforge update                    # which installed games have an update
+lightforge update wow                # apply it
+lightforge play wow                  # exits with the game's own exit code
+lightforge running                   # what is running in the prefix
+lightforge stop wow
+lightforge verify --deep             # check every stored byte; --repair refetches
+lightforge addon-search details      # then addon-install / addon-update
+
+lightforge setup --battlenet         # the client, for the games below
+lightforge install fenris            # Diablo IV: Battle.net's own install flow
+lightforge play fenris               # handed to the client in the tray
 ```
 
-## Tested distros
+Product codes are Blizzard's: `wow`, `wow_classic`, `wow_classic_era`,
+`wowt` (PTR), `wow_beta`, `wowf` (Forever) for WoW, and `pro` (Overwatch),
+`fenris` (Diablo IV), `osi` (Diablo II: Resurrected), `hsb`
+(Hearthstone), `s2` (StarCraft II) and so on for the rest; `lightforge
+products` asks the version service which are live.
 
-🟢 tested and working · 🟠 testing still to do · 🔴 not working
+**How the other games run.** The first `play` starts Battle.net in the tray;
+if it can't sign itself in yet, its own login form shows once, and you sign
+in there. Lightforge then hands it `--exec="launch <game>"`, closes the window
+the client raises for it, waits for the game, and returns when it exits.
+Which tile a game is, Lightforge reads from the client's own cached catalogue,
+so a game the client has never listed needs one `lightforge battlenet-run`
+first. The
+client patches its games itself before launching them, so `update` leaves
+them alone. `install` opens the client's install dialog, the one step that
+still needs its window. [docs/CLI.md](docs/CLI.md) lists
+every command and flag; it is generated from the binary's own `--help`.
 
-| Distro | Status | Notes |
-| --- | :---: | --- |
-| CachyOS | 🟢 | PKGBUILD, Lightforge was developed on CachyOS |
-| Arch Linux | 🟢 | PKGBUILD, Tested on hardware |
-| Omarchy | 🟢 | PKGBUILD, works |
-| EndeavourOS | 🟠 | Not tested yet but PKGBUILD should work |
-| Manjaro | 🟠 | Same as EndeavourOS |
-| Fedora | 🟢 | COPR repo / RPM install, Tested on hardware |
-| Bazzite | 🟢 | dnf5 copr, Desktop and ROG Ally X, reported by players. |
-| SteamOS | 🟢 | install-script, Tested in a VM; a real Steam Deck is next. |
-| Nobara | 🟢 | COPR repo / RPM install, Tested on hardware |
-| Debian | 🟢 | deb file, Tested in a VM. |
-| Ubuntu | 🟠 | not tested yet but should work with deb file |
-| Linux Mint | 🟠 | same as ubuntu |
-| Pop!_OS | 🟠 | same as ubuntu |
-| openSUSE Tumbleweed | 🟠 | not tested yet, use the installer |
-| NixOS | 🟠 | not tested yet |
+Shell completions: `lightforge completions bash|zsh|fish|elvish|powershell`.
 
-If you run it on another distro, or on one of the orange ones, tell me how it
-went in [Discord](https://discord.gg/vtTgmUV9Bq), with the output of
-`lightforge doctor`.
+## Scripting and front ends
 
-## Requirements
+The conventions follow [Aurelia](https://github.com/Drackrath/Aurelia), so a
+launcher can drive either the same way.
 
-| | |
-| --- | --- |
-| **OS** | Any current Linux, x86_64 or arm64. glibc 2.35+ for the release binaries, which link only libc, libm and libgcc_s. |
-| **GPU** | Whatever the game needs under Proton. Lightforge itself draws nothing. |
-| **32-bit** | Only for Battle.net, whose installer and client are 32-bit. WoW alone doesn't need it. |
+- **`-j/--json` on every command.** The result is JSON on stdout. Long
+  operations (`install`, `update`, `download`, `verify --deep`) stream
+  progress events to stderr, one compact object per line, and finish with one
+  result line on stdout:
 
-Proton-GE is downloaded and verified by Lightforge itself. You don't need
-Steam, Lutris or a system Wine.
+  ```json
+  {"event":"progress","state":"downloading","unit":"bytes","bytes_downloaded":1048576,"total_bytes":73400320,"percent":1.4,"speed_bps":5242880,"eta_seconds":14,"file":null}
+  {"event":"result","schema":1,"product":"wow_classic_era","status":"installed", "...": "..."}
+  ```
 
-## What it does
+- **Errors** are one JSON line, `{"error","type","hint","fix"}`, and the exit
+  code says what kind:
 
-- **Installs and updates WoW itself:** Retail, Classic, Classic Era,
-  Anniversary and WoW: Forever, with their PTR and beta branches. Resumable
-  downloads, pre-downloads before a patch, real CASC storage, and
-  verification of every stored byte.
-- **Puts games on any drive** set up as a library, and moves them between
-  libraries without downloading them again (`lightforge move`); the prefix,
-  with Battle.net in it, moves the same way (`lightforge prefix-move`).
-- **Manages addons** from CurseForge, WoWInterface, Tukui and GitHub: search,
-  install, update and remove, WoWUp import, and adoption of addons you
-  installed by hand.
-- **Backs up your settings:** `WTF/Account`, restorable per game account.
-- **Tunes the game** with the CPU performance profile, MangoHud, Proton's
-  Wayland backend and your own environment variables, set per product in
-  `config.toml` and applied by `lightforge play`. High-resolution textures
-  are `lightforge download --optional HighRes`.
-- **Sets Battle.net up for you**, then launches its games through it. The
-  in-game shop works too ([how](docs/TECHDOC.md#the-in-game-shop)).
-- **Runs only while a command runs:** one native binary, no background
-  service, nothing left running when it exits.
+  | type | exit | |
+  | --- | ---: | --- |
+  | `invalid_input`, `not_found`, `unknown` | 1 | |
+  | usage error | 2 | from argument parsing |
+  | `rate_limited` | 75 | |
+  | `timeout` | 82 | |
+  | `cancelled` | 83 | Ctrl-C; a second one exits 130 |
+  | `input_closed` | 84 | |
+  | `disk_full` | 85 | |
+  | `offline` | 86 | |
+  | `busy` | 87 | the game or the store is in use |
+  | `store_damaged` | 88 | run `lightforge verify --deep --repair` |
+
+- **`lightforge capabilities --json`** describes this build offline: every
+  command and flag, the event names, the error types and their exit codes,
+  and the JSON `schema` version, which only goes up when an existing field
+  changes meaning or is removed.
+- **Destructive commands** (`move`, `uninstall`, `prune`, `compact`,
+  `stop --force`) print a plan unless `--yes` is given, and require `--yes`
+  in `--json` mode.
+- **Isolated state** for an embedding launcher: `LIGHTFORGE_CONFIG_DIR`,
+  `LIGHTFORGE_DATA_DIR` and `LIGHTFORGE_CACHE_DIR` move the config, data and
+  cache directories; `--root` moves the game root.
+- **Logs** go to `~/.local/share/lightforge/logs/lightforge-cli.log`; `-v`,
+  `-vv`, `-vvv` add them to stderr, and `LIGHTFORGE_LOG` sets the level.
+
+## Configuration
+
+The config lives in `~/.config/lightforge/config.toml`. `lightforge config`
+prints the effective one; each setting can be viewed or set on its own:
+
+```bash
+lightforge config download-limit 20       # MB/s, or `off`
+lightforge config proton GE-Proton10-25   # or `auto`
+lightforge config region us
+lightforge config locale deDE
+lightforge config addon-channel beta
+lightforge config game wow --proton GE-Proton10-25 --env DXVK_HUD=fps
+lightforge config game pro --proton GE-Proton10-25   # what Battle.net runs it under
+```
 
 ## What it doesn't do
 
-- **No credential handling.** You sign in to Battle.net yourself, in
-  Blizzard's own window.
-- **It never touches the running game.** No memory reads, no injection.
-  Lightforge manages the prefix, the files and the process around `Wow.exe`,
-  never inside it.
-- **No tracking.** No analytics, no crash pings, no account. It talks to
-  Blizzard's CDN for the game, to GitHub for Proton-GE, and to Lightforge's
-  own server for CurseForge lookups (CurseForge's API needs a key that can't
-  live in a public repo). Every host and what it sees is listed in
+- **It doesn't replace Battle.net for the other games.** They get their
+  sign-in from the client, and their anti-cheat checks for it. Faking that
+  would mean handling your password and risking your account, so Lightforge
+  starts the real client instead and keeps it out of sight. Lightforge
+  doesn't download those games itself either; the client does.
+- **No credentials.** You sign in on WoW's own login screen or Battle.net's
+  own form; Lightforge never sees your password or a login token.
+- **It never touches the running game.** No memory reads, no injection: it
+  manages the prefix, the files and the process around `Wow.exe`.
+- **No tracking.** It talks to Blizzard's CDN for the game, to GitHub for
+  Proton-GE, and to upstream Lightforge's addon proxy for CurseForge lookups.
+  Every host and what it sees is in
   [DISCLAIMER.md](DISCLAIMER.md#what-leaves-your-machine).
-- **WoW first.** Other Blizzard games are installed and run by Battle.net.
 - **Linux only.**
-
-## How it was built
-
-I wrote Lightforge with [Claude Code](https://claude.com/claude-code), and I'd
-rather say so here than have anyone wonder. The architecture and every real
-trade-off are my decisions; the protocol work was settled against real CDN
-responses, not against what a model believed about TACT; nothing was committed
-unread. Judge it on the tests, on a 123 GiB Retail install that Battle.net
-adopted and played, and on the code. [TECHDOC.md](docs/TECHDOC.md) goes further into
-both the pipeline and the method.
-
-## This is a beta
-
-It has been through full installs of Retail and Classic Era, but it has had
-few machines to run on. Expect rough edges on hardware and distros it hasn't
-met yet, and please tell me when you find them. Known problems and their fixes
-are in [**TROUBLESHOOTING.md**](docs/TROUBLESHOOTING.md); what changed in each
-version is in [RELEASES.md](RELEASES.md).
-
-## What's next
-
-I work on this in my spare time, so there are no dates:
-
-- The AUR once registrations reopen.
-
-If something is missing for you, tell me in [Discord](https://discord.gg/vtTgmUV9Bq).
 
 ## Documentation
 
 | | |
 | --- | --- |
-| [INSTALL.md](docs/INSTALL.md) | Installing, the Steam Deck, what each distro needs, removing it |
-| [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Known problems and what to do about them |
-| [docs/CLI.md](docs/CLI.md) | The command-line tool: every command, generated from the binary |
-| [TECHDOC.md](docs/TECHDOC.md) | How it works underneath |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Reporting bugs, sending patches, the house rules |
-| [SECURITY.md](SECURITY.md) | Reporting a vulnerability, and how downloads are trusted |
-| [DISCLAIMER.md](DISCLAIMER.md) | Blizzard, the guardrail, and what leaves your machine |
-| [RELEASES.md](RELEASES.md) | What's in each version |
+| [docs/INSTALL.md](docs/INSTALL.md) | Installing, what each distro needs, removing it |
+| [docs/CLI.md](docs/CLI.md) | Every command, generated from the binary |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Known problems and what to do about them |
+| [docs/TECHDOC.md](docs/TECHDOC.md) | How it works underneath |
+| [packaging/README.md](packaging/README.md) | Release assets, packages, cutting a release |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Bugs, patches, house rules |
+| [SECURITY.md](SECURITY.md) | Reporting a vulnerability, how downloads are trusted |
+| [DISCLAIMER.md](DISCLAIMER.md) | Blizzard, the guardrail, what leaves your machine |
+| [RELEASES.md](RELEASES.md) | What changed in each version |
 
-## Support the project
+## Credits
 
-Lightforge is free and I build it in my spare time. If you'd like to support
-it:
-
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/simplykenny)
-[![PayPal](https://img.shields.io/badge/PayPal-support-003087?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/simplykenny)
-
-Telling someone about it works too. Come say hi on
-[Discord](https://discord.gg/vtTgmUV9Bq) or [X](https://x.com/simplyKennybtw).
+lightforge-cli is built on [Lightforge](https://github.com/LightforgeProject/lightforge)
+by Kenny: the TACT/CASC stack, the prefix and Proton handling, the addon
+manager, the Battle.net hand-off and most of the documentation are his work.
+This fork removes the GUI and adds the scripting interface. If you want the
+desktop app, use upstream, and consider supporting him on
+[Ko-fi](https://ko-fi.com/simplykenny).
 
 ## Legal
 
@@ -258,7 +289,5 @@ Lightforge is an independent, unofficial project, **not affiliated with,
 endorsed by, or sponsored by Blizzard Entertainment**. World of Warcraft,
 Battle.net and Blizzard Entertainment are trademarks of Blizzard
 Entertainment, Inc. Lightforge ships no game content: it downloads from
-Blizzard's own CDN with your own account, the same way their client does. See
-[DISCLAIMER.md](DISCLAIMER.md) for the rest.
-
-Licensed under [GPL-3.0](LICENSE).
+Blizzard's servers what the official client would. Licensed under
+[GPL-3.0-or-later](LICENSE).

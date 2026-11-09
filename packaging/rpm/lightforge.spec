@@ -18,11 +18,11 @@
 Name:           lightforge
 Version:        %{lua: print((rpm.expand("%{upstream_version}"):gsub("-", "~")))}
 Release:        1%{?dist}
-Summary:        Command-line tool to install, update and play World of Warcraft on Linux
+Summary:        Command-line launcher for World of Warcraft and the other Blizzard games on Linux
 
 License:        GPL-3.0-or-later
-URL:            https://github.com/LightforgeProject/lightforge
-Source0:        %{url}/archive/v%{upstream_version}/%{name}-%{upstream_version}.tar.gz
+URL:            https://github.com/Drackrath/lightforge-cli
+Source0:        %{url}/archive/v%{upstream_version}/lightforge-cli-%{upstream_version}.tar.gz
 
 # Releases are x86_64 builds. aarch64 works from source but is not tested
 # on hardware yet, so COPR does not build it.
@@ -35,18 +35,20 @@ BuildRequires:  rust >= 1.90
 BuildRequires:  gcc
 # Proton's launcher is a Python script.
 Requires:       python3
-# The Battle.net installer is the one 32-bit binary in the whole flow.
+# The Battle.net installer is the one 32-bit binary in the whole flow, and
+# only games other than WoW need Battle.net.
 Suggests:       wine.i686
 Suggests:       mangohud
 
 %description
-Lightforge is a command-line tool that installs, updates and launches World of Warcraft on Linux through
-Proton, downloading straight from Blizzard's CDN, and hands every other
-Battle.net game to the Battle.net client in the same prefix. It also manages
-addons and per-game Proton versions.
+Lightforge is a command-line tool that installs, updates and launches World of
+Warcraft on Linux through Proton, downloading straight from Blizzard's CDN,
+without the Battle.net client. Every other Blizzard game is handed to the
+Battle.net client in the same prefix, started in the background. It also
+manages addons and per-game Proton versions.
 
 %prep
-%autosetup -n %{name}-%{upstream_version}
+%autosetup -n lightforge-cli-%{upstream_version}
 
 %build
 export CARGO_HOME=%{_builddir}/cargo-home

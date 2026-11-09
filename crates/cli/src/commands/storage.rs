@@ -4,6 +4,19 @@ use super::{default_install, windows_wow_path};
 use crate::*;
 
 pub(crate) fn verify(ctx: Ctx, path: Option<PathBuf>, deep: bool, repair: bool, all: bool) -> Result<()> {
+    // With `--json` the report goes to stderr and one result line to stdout.
+    let json = super::output::json();
+    let quiet = json.then(super::output::StdoutToStderr::new);
+    let result = verify_report(ctx, path, deep, repair, all)?;
+    drop(quiet);
+    if json {
+        super::output::print_result_line(result);
+    }
+    Ok(())
+}
+
+fn verify_report(ctx: Ctx, path: Option<PathBuf>, deep: bool, repair: bool, all: bool) -> Result<serde_json::Value> {
+    use super::output::{Progress, Unit};
     let Ctx { layout, .. } = ctx;
     use lightforge_core::tact::storage::Storage;
     use lightforge_core::tact::verify;
@@ -44,8 +57,12 @@ pub(crate) fn verify(ctx: Ctx, path: Option<PathBuf>, deep: bool, repair: bool, 
             // it, so a write between the two is caught.
             drop(store);
             let cancel = lightforge_core::tact::download::Cancel::new();
-            verify::deep_scan(&install, &cancel, |p| {
-                if last.elapsed() >= Duration::from_secs(2) {
+            let mut progress = Progress::new();
+            let drawn = progress.draws_line() || super::output::json();
+            let report = verify::deep_scan(&install, &cancel, |p| {
+                if drawn {
+                    progress.update("verifying", Unit::Bytes, p.bytes, p.bytes_total, None);
+                } else if last.elapsed() >= Duration::from_secs(2) {
                     last = Instant::now();
                     eprintln!(
                         "  {:.1}/{:.1} GiB hashed, {} damaged",
@@ -54,8 +71,23 @@ pub(crate) fn verify(ctx: Ctx, path: Option<PathBuf>, deep: bool, repair: bool, 
                         p.damaged
                     );
                 }
-            })?
+            })?;
+            drop(progress);
+            report
         }
+    };
+    let summary = |status: &str, removed: Option<usize>| {
+        serde_json::json!({
+            "status": status,
+            "path": install,
+            "deep": deep,
+            "checked": report.checked,
+            "healthy": report.is_healthy(),
+            "damaged": report.damaged.len(),
+            "missing_archives": report.missing_archives.len(),
+            "unverifiable": report.unverifiable,
+            "removed": removed,
+        })
     };
 
     println!(
@@ -83,7 +115,7 @@ pub(crate) fn verify(ctx: Ctx, path: Option<PathBuf>, deep: bool, repair: bool, 
         if deep {
             println!("          and every stored byte matches its checksum");
         }
-        return Ok(());
+        return Ok(summary("verified", None));
     }
 
     println!("\ndamaged         {} entries", report.damaged.len());
@@ -112,10 +144,13 @@ pub(crate) fn verify(ctx: Ctx, path: Option<PathBuf>, deep: bool, repair: bool, 
     }
 
     match repair {
-        false => println!(
-            "\nRun again with --repair to drop these from the indices; the next \
-             download refetches them."
-        ),
+        false => {
+            println!(
+                "\nRun again with --repair to drop these from the indices; the next \
+                 download refetches them."
+            );
+            Ok(summary("damaged", None))
+        }
         true => {
             // Again, not only at the start: a deep scan runs for
             // minutes, and the game may have been started meanwhile.
@@ -129,9 +164,9 @@ pub(crate) fn verify(ctx: Ctx, path: Option<PathBuf>, deep: bool, repair: bool, 
             let removed = verify::repair_unchanged(&data_dir, &report)?;
             println!("\nremoved         {removed} entries from the indices");
             println!("Run a download for this product to fetch them again.");
+            Ok(summary("repaired", Some(removed)))
         }
     }
-    Ok(())
 }
 
 pub(crate) fn reindex(ctx: Ctx, path: Option<PathBuf>) -> Result<()> {

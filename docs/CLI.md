@@ -11,11 +11,24 @@ text, laid out so you can read it in one go.
 $ lightforge --help
 ```
 
-One option applies everywhere:
+Three options apply everywhere:
 
 ```text
 --root <ROOT>   Override the Blizzard root (default: ~/Games/Blizzard)
+-j, --json      Output (and errors) as JSON: results on stdout, progress as
+                NDJSON on stderr
+-v, --verbose   Show logs on stderr (-v, -vv, -vvv)
 ```
+
+With `--json` a failure is one line on stdout,
+`{"error": …, "type": …, "hint": …, "fix": …}`, and the exit code follows the
+type: 1 for `invalid_input`, `not_found` and `unknown`, 2 for a usage error,
+75 `rate_limited`, 82 `timeout`, 83 `cancelled`, 84 `input_closed`,
+85 `disk_full`, 86 `offline`, 87 `busy` (a game or another command holds the
+prefix or the store), 88 `store_damaged`. `lightforge capabilities --json`
+describes all of it for a front end. `LIGHTFORGE_CONFIG_DIR`,
+`LIGHTFORGE_DATA_DIR` and `LIGHTFORGE_CACHE_DIR` move Lightforge's own
+directories.
 
 Most commands take `--product <CODE>` (`wow`, `wow_classic_era`,
 `wow_classic`, …) and default to `wow`. Anything taking a path defaults to the
@@ -41,18 +54,34 @@ Usage: lightforge paths [OPTIONS]
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
 ### `lightforge config`
 
 ```text
-Print the effective configuration as TOML
+Print the effective configuration as TOML, or view or set one setting
 
-Usage: lightforge config [OPTIONS]
+Usage: lightforge config [OPTIONS] [COMMAND]
+
+Commands:
+  show                           Print the effective configuration (TOML, or JSON with `--json`)
+  download-limit                 View or set the download speed cap in MB/s; `off` removes it
+  proton                         View or set the Proton build games launch under unless they pin their own; `auto` follows the tested build
+  addon-channel                  View or set which addon builds are accepted by default
+  addon-auto-update              View or set whether addons update in Lightforge's own pass
+  pause-downloads-while-playing  View or set whether launching a game pauses other games' downloads
+  region                         View or set the Blizzard region games are downloaded from
+  locale                         View or set the language games are installed in from now on, e.g. `deDE`. Installed games keep theirs
+  game                           View or set one game's own settings: its Proton build and environment
+  help                           Print this message or the help of the given subcommand(s)
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -64,23 +93,26 @@ Check this system for what Battle.net and the games need under Proton
 Usage: lightforge doctor [OPTIONS]
 
 Options:
-      --json         Print the checks as JSON
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
 ### `lightforge status`
 
 ```text
-Resolve the primary action button's state for a product
+Resolve what a product needs next: install, update, play, or wait
 
 Usage: lightforge status [OPTIONS]
 
 Options:
       --product <PRODUCT>  Product code, e.g. `wow` or `wow_classic_era` [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --region <REGION>    [default: eu]
       --offline            Skip the version service and report what the disk alone implies
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
@@ -97,33 +129,43 @@ Arguments:
 Options:
       --product <PRODUCT>  Product code, e.g. `wow` [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --region <REGION>    Blizzard region to ask [default: eu]
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
 ### `lightforge play`
 
 ```text
-Launch the game directly under Proton, the `[ PLAY ]` path.
+Launch a game.
 
-Runs pre-flight first, then starts `Wow.exe` through the prefix's Windows-visible path. Battle.net is not involved.
+World of Warcraft starts directly under Proton and shows its own login screen; Battle.net is not involved. Every other game needs Battle.net's sign-in, so it is handed to the client, which is started in the background and whose window is closed as soon as it appears.
 
-Usage: lightforge play [OPTIONS]
+Usage: lightforge play [OPTIONS] [GAME]
+
+Arguments:
+  [GAME]
+          Product to launch, e.g. `wow` or `wow_classic`. Default: `wow`
 
 Options:
       --product <PRODUCT>
-          Product to launch, e.g. `wow` or `wow_classic`
-          
-          [default: wow]
+          The same, as a flag
 
       --root <ROOT>
           Override the Blizzard root (default: ~/Games/Blizzard)
+
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
 
       --proton <PROTON>
           Proton build to launch under
 
       --dry-run
           Print what would run and exit
+
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
 
   -h, --help
           Print help (see a summary with '-h')
@@ -139,10 +181,140 @@ Usage: lightforge preflight [OPTIONS]
 Options:
       --proton <PROTON>    Proton build whose `wineserver` shuts the prefix down
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --product <PRODUCT>  Product the launch is for, so a download can be paused
       --dry-run            Report what would be done without touching anything
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
       --grace <GRACE>      Seconds a process gets between SIGTERM and SIGKILL [default: 5]
   -h, --help               Print help
+```
+
+### `lightforge list`
+
+```text
+List the games: the configured WoW flavours, installed or not, and the games Battle.net has installed
+
+Usage: lightforge list [OPTIONS]
+
+Options:
+      --installed    Only the installed ones
+      --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+      --offline      Skip the version service: no update check
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+  -h, --help         Print help
+```
+
+### `lightforge info`
+
+```text
+Show a product's install and what Blizzard currently ships for it
+
+Usage: lightforge info [OPTIONS] <PRODUCTS>...
+
+Arguments:
+  <PRODUCTS>...  Product codes, e.g. `wow wow_classic_era`
+
+Options:
+      --offline      Skip the version service
+      --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+  -h, --help         Print help
+```
+
+### `lightforge available`
+
+```text
+Whether a product is installed and ready to play. Offline
+
+Usage: lightforge available [OPTIONS] <PRODUCT>
+
+Arguments:
+  <PRODUCT>  
+
+Options:
+      --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+  -h, --help         Print help
+```
+
+### `lightforge running`
+
+```text
+List the games running in the prefix
+
+Usage: lightforge running [OPTIONS]
+
+Options:
+      --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+  -h, --help         Print help
+```
+
+### `lightforge stop`
+
+```text
+Stop a running game, or every game in the prefix
+
+Usage: lightforge stop [OPTIONS] [PRODUCT]
+
+Arguments:
+  [PRODUCT]  
+
+Options:
+      --force        Kill at once, without the grace period. Needs `--yes` with `--json`
+      --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+      --yes          Confirm `--force` in `--json` mode
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+  -h, --help         Print help
+```
+
+### `lightforge capabilities`
+
+```text
+Describe this build for front ends: commands, flags, JSON events, error types and exit codes, and the `--json` schema version. Offline.
+
+Name a command path (e.g. `capabilities config game`) for its flags, values and help.
+
+Usage: lightforge capabilities [OPTIONS] [PATH]...
+
+Arguments:
+  [PATH]...
+          Command path to describe, e.g. `config game`
+
+Options:
+      --root <ROOT>
+          Override the Blizzard root (default: ~/Games/Blizzard)
+
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+### `lightforge completions`
+
+```text
+Print a shell completion script, e.g. `lightforge completions bash`
+
+Usage: lightforge completions [OPTIONS] <SHELL>
+
+Arguments:
+  <SHELL>  The shell to complete for [possible values: bash, elvish, fish, powershell, zsh]
+
+Options:
+      --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+  -h, --help         Print help
 ```
 
 ## Setup, Proton and the prefix
@@ -150,15 +322,33 @@ Options:
 ### `lightforge setup`
 
 ```text
-Report or run first-run provisioning: Proton, prefix, Battle.net
+Report or run first-run provisioning: Proton and the prefix, and Battle.net with `--battlenet`.
+
+WoW needs no Battle.net client, so it is only installed when asked for: other games need it to sign in.
 
 Usage: lightforge setup [OPTIONS]
 
 Options:
-      --root <ROOT>      Override the Blizzard root (default: ~/Games/Blizzard)
-      --status           Only report what is missing; provision nothing
-      --proton <PROTON>  Proton-GE release to install if one is needed
-  -h, --help             Print help
+      --root <ROOT>
+          Override the Blizzard root (default: ~/Games/Blizzard)
+
+      --status
+          Only report what is missing; provision nothing
+
+      --battlenet
+          Also install the Battle.net client, for games other than WoW
+
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+
+      --proton <PROTON>
+          Proton-GE release to install if one is needed
+
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+
+  -h, --help
+          Print help (see a summary with '-h')
 ```
 
 ### `lightforge proton`
@@ -170,6 +360,8 @@ Usage: lightforge proton [OPTIONS]
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -182,6 +374,8 @@ Usage: lightforge proton-check [OPTIONS]
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -197,6 +391,8 @@ Arguments:
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -209,6 +405,8 @@ Usage: lightforge prefix [OPTIONS]
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -222,6 +420,8 @@ Usage: lightforge prefix-init [OPTIONS]
 Options:
       --proton <PROTON>  Proton build to use, e.g. `GE-Proton11-7`. Defaults to the tested build when it is installed, else the newest supported one
       --root <ROOT>      Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json             Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...       Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help             Print help
 ```
 
@@ -234,6 +434,8 @@ Usage: lightforge prefix-link [OPTIONS]
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -249,6 +451,8 @@ Arguments:
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -263,6 +467,8 @@ Usage: lightforge battlenet-fetch [OPTIONS]
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -276,8 +482,10 @@ Usage: lightforge battlenet-setup [OPTIONS]
 Options:
       --proton <PROTON>        Proton build to run the installer under
       --root <ROOT>            Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json                   Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --locale <LOCALE>        Battle.net UI language [default: enUS]
       --installer <INSTALLER>  Use an already-downloaded installer instead of the cached one
+  -v, --verbose...             Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
       --timeout <TIMEOUT>      Seconds to wait for the install to appear [default: 600]
   -h, --help                   Print help
 ```
@@ -292,8 +500,10 @@ Usage: lightforge battlenet-run [OPTIONS]
 Options:
       --proton <PROTON>              Proton build to launch under
       --root <ROOT>                  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json                         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --product <PRODUCT>            Product code to launch, e.g. `wow`. Omit to just open the client
       --exec <EXEC>                  Override the `--exec="launch <uid>"` verb Battle.net is given
+  -v, --verbose...                   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
       --uri <URI>                    Hand the client a `battlenet://` link instead, the way the system protocol handler does. Takes a game family, e.g. `WTCG`
       --install-game <INSTALL_GAME>  Open the client's install flow for an install uid, e.g. `w1r`
       --skip-preflight               Skip pre-flight. For testing a hand-off against a client that is already running, without killing the session first
@@ -301,6 +511,59 @@ Options:
 ```
 
 ## Games: install, update, remove
+
+### `lightforge install`
+
+```text
+Install a game into one of the configured libraries.
+
+The destination comes from the library (`--library`, else the one the product is assigned to, else the default), so a front end never builds a path. A game other than WoW is Battle.net's to install: this opens the client's own install flow for it, which asks where.
+
+Usage: lightforge install [OPTIONS] <PRODUCT>
+
+Arguments:
+  <PRODUCT>
+          
+
+Options:
+      --library <LIBRARY>
+          The library to install into, by id or name, as `lightforge paths` lists them
+
+      --root <ROOT>
+          Override the Blizzard root (default: ~/Games/Blizzard)
+
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+
+      --locale <LOCALE>
+          Locale to install, e.g. `deDE`. Default: the product's, else the configured one
+
+      --dry-run
+          Plan and report, then stop without fetching any content
+
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+### `lightforge update`
+
+```text
+Update an installed game, or with no product list the ones that have an update. Battle.net patches its own games before it launches them
+
+Usage: lightforge update [OPTIONS] [PRODUCT]
+
+Arguments:
+  [PRODUCT]  
+
+Options:
+      --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+  -h, --help         Print help
+```
 
 ### `lightforge download`
 
@@ -317,10 +580,14 @@ Options:
           [default: wow]
       --root <ROOT>
           Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --region <REGION>
           [default: eu]
       --locale <LOCALE>
           Locale to install, e.g. `enUS` [default: enUS]
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
       --flavor <FLAVOR>
           Flavor directory the install files go in. Default: the one the product config names, e.g. `_forever_` for `wowf`
       --dry-run
@@ -364,8 +631,10 @@ Arguments:
 Options:
       --deep         Also hash every stored byte against its chunk table and key. Reads the whole store, minutes rather than seconds, and is safe while the game runs
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --repair       Remove damaged entries from the indices. Requires a closed client
       --all          List every damaged entry rather than the first few
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -386,6 +655,12 @@ Options:
       --root <ROOT>
           Override the Blizzard root (default: ~/Games/Blizzard)
 
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
+
   -h, --help
           Print help (see a summary with '-h')
 ```
@@ -400,7 +675,9 @@ Usage: lightforge move [OPTIONS] --to <TO>
 Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --to <TO>            The library to move it to, by name or id, as `lightforge paths` lists them
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
       --yes                Actually move. Without this, nothing is touched
   -h, --help               Print help
 ```
@@ -415,7 +692,9 @@ Usage: lightforge uninstall [OPTIONS]
 Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --path <PATH>        Install root. Defaults to the managed WoW install
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
       --yes                Actually delete. Without this, nothing is touched
   -h, --help               Print help
 ```
@@ -436,8 +715,14 @@ Options:
       --root <ROOT>
           Override the Blizzard root (default: ~/Games/Blizzard)
 
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+
       --yes
           Actually drop and compact. Without this, nothing is touched
+
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
 
   -h, --help
           Print help (see a summary with '-h')
@@ -459,8 +744,14 @@ Options:
       --root <ROOT>
           Override the Blizzard root (default: ~/Games/Blizzard)
 
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+
       --yes
           Actually rewrite. Without this, nothing is touched
+
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
 
   -h, --help
           Print help (see a summary with '-h')
@@ -478,6 +769,8 @@ Arguments:
 
 Options:
       --root <ROOT>  Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json         Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...   Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help         Print help
 ```
 
@@ -493,8 +786,10 @@ Usage: lightforge addons [OPTIONS]
 Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --path <PATH>        Read this AddOns directory instead of the product's own
       --token <TOKEN>      Reconcile against a WoWUp import token (or `@file`)
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
@@ -511,8 +806,10 @@ Arguments:
 Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --limit <LIMIT>      [default: 15]
       --catalog <CATALOG>  
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
@@ -529,8 +826,10 @@ Arguments:
 Options:
       --provider <PROVIDER>  [default: wowinterface]
       --root <ROOT>          Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json                 Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --product <PRODUCT>    [default: wow]
       --catalog <CATALOG>    
+  -v, --verbose...           Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help                 Print help
 ```
 
@@ -548,7 +847,9 @@ Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
       --catalog <CATALOG>  Catalog base URL, or a fixture directory. Defaults to config
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --dry-run            Resolve and report without writing anything
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
@@ -563,6 +864,8 @@ Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
       --catalog <CATALOG>  
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
@@ -579,7 +882,9 @@ Arguments:
 Options:
       --provider <PROVIDER>  [default: curse]
       --root <ROOT>          Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json                 Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --product <PRODUCT>    [default: wow]
+  -v, --verbose...           Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help                 Print help
 ```
 
@@ -593,8 +898,10 @@ Usage: lightforge addon-adopt [OPTIONS]
 Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
       --path <PATH>        Read this AddOns directory instead of the product's own
       --ledger <LEDGER>    Write the ledger here instead of beside the product's
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
       --catalog <CATALOG>  Base URL of the addon catalog, or a fixture directory
   -h, --help               Print help
 ```
@@ -609,6 +916,8 @@ Usage: lightforge backup-list [OPTIONS]
 Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
@@ -622,6 +931,8 @@ Usage: lightforge backup-create [OPTIONS]
 Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
@@ -639,6 +950,8 @@ Options:
       --product <PRODUCT>  [default: wow]
       --root <ROOT>        Override the Blizzard root (default: ~/Games/Blizzard)
       --account <ACCOUNT>  Only this game account's folder, as `backup-list` names it; the other accounts and what they share stay as they are
+  -j, --json               Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+  -v, --verbose...         Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
   -h, --help               Print help
 ```
 
@@ -663,8 +976,14 @@ Options:
       --code <CODE>
           Extra codes to probe beyond the built-in list
 
+  -j, --json
+          Emit output (and errors) as JSON. Works with every command: results on stdout, progress events as NDJSON on stderr
+
       --all
           Show codes that answered 404 as well
+
+  -v, --verbose...
+          Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only warnings and errors are shown; -v adds Lightforge's debug logs, -vv everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level
 
       --concurrency <CONCURRENCY>
           Simultaneous probes

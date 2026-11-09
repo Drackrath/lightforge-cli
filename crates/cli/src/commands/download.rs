@@ -2,12 +2,209 @@
 
 use crate::*;
 
+use super::output::{print_result_line, Progress, Unit};
+use crate::error::{typed, ErrorKind};
+use lightforge_core::tact::install::{Event, Summary};
+use serde_json::{json, Value};
+
+/// Prints an install's [`Event`]s: the lines `download` always printed, or
+/// with `--json` the progress events alone, on stderr.
+pub(crate) struct Reporter {
+    json: bool,
+    progress: Progress,
+    start: std::time::Instant,
+    last_index: usize,
+    last_report: std::time::Instant,
+    extracted_files: u64,
+}
+
+impl Reporter {
+    pub(crate) fn new() -> Self {
+        Self {
+            json: super::output::json(),
+            progress: Progress::new(),
+            start: std::time::Instant::now(),
+            last_index: 0,
+            last_report: std::time::Instant::now(),
+            extracted_files: 0,
+        }
+    }
+
+    pub(crate) fn on_event(&mut self, event: Event) {
+        match self.json {
+            true => self.emit(event),
+            false => self.print(event),
+        }
+    }
+
+    /// `--json`: progress on stderr, nothing on stdout.
+    fn emit(&mut self, event: Event) {
+        match event {
+            Event::Build { .. } => self.progress.update("preparing", Unit::Items, 0, 0, None),
+            Event::Indices(step) => {
+                self.progress.update("indexing", Unit::Items, step.done as u64, step.total as u64, None)
+            }
+            Event::Progress(p) => {
+                self.progress.update("downloading", Unit::Bytes, p.bytes_stored, p.bytes_total, None)
+            }
+            Event::InstallFile { path, .. } => {
+                self.extracted_files += 1;
+                let file = path.display().to_string();
+                self.progress.update("extracting", Unit::Items, self.extracted_files, 0, Some(&file));
+            }
+            _ => {}
+        }
+    }
+
+    fn print(&mut self, event: Event) {
+        let gib = |b: u64| b as f64 / 1024f64.powi(3);
+        // A terminal draws one progress line; anything else ends it first.
+        let line = self.progress.draws_line();
+        match &event {
+            Event::Progress(_) | Event::Indices(_) if line => {}
+            _ => self.progress.clear(),
+        }
+        match event {
+            Event::Build { versions_name, build_config, archives } => {
+                println!("build           {versions_name} ({build_config})");
+                println!("archives        {archives}");
+            }
+            Event::Repaired { dir } => {
+                println!("repaired        added owner write to {}", dir.display())
+            }
+            Event::Encoding { entries } => println!("encoding        {entries} entries"),
+            Event::Manifests { download, install, unknown_tags } => {
+                println!("download        {download} entries");
+                println!("install         {install} entries");
+                println!("tags            {unknown_tags:?}");
+            }
+            Event::Wanted { files, bytes } => {
+                println!("wanted          {files} files, {:.1} GiB", gib(bytes))
+            }
+            Event::Indices(step) if line => {
+                self.progress.update("indexing", Unit::Items, step.done as u64, step.total as u64, None)
+            }
+            Event::Indices(step) => {
+                if step.done - self.last_index >= 100 || step.done == step.total {
+                    self.last_index = step.done;
+                    println!("  indices {}/{}", step.done, step.total);
+                }
+            }
+            Event::IndicesDone { cached, downloaded, bytes } => println!(
+                "indices         {cached} cached, {downloaded} downloaded ({:.1} MiB)",
+                bytes as f64 / 1048576.0
+            ),
+            Event::Optional { names } => println!(
+                "optional        {}",
+                match names.is_empty() {
+                    true => "none offered".to_owned(),
+                    false => names.join(", "),
+                }
+            ),
+            Event::Loose { files } => println!("loose files     {files}"),
+            Event::Located { located, wanted } => {
+                println!("located         {located} of {wanted}")
+            }
+            Event::Planned { requests, files, bytes, padding, already_present, missing } => {
+                println!(
+                    "\nplan            {requests} requests, {files} files, {:.2} GiB ({:.2} GiB padding)",
+                    gib(bytes),
+                    gib(padding)
+                );
+                println!("already present {already_present}");
+                if missing > 0 {
+                    println!("UNLOCATABLE     {missing} keys");
+                }
+            }
+            Event::Progress(p) if line => {
+                self.progress.update("downloading", Unit::Bytes, p.bytes_stored, p.bytes_total, None)
+            }
+            Event::Progress(p) => {
+                if self.last_report.elapsed().as_secs() >= 2 || p.requests_done == p.requests_total {
+                    self.last_report = std::time::Instant::now();
+                    let mb = p.bytes_stored as f64 / 1e6;
+                    println!(
+                        "  {:>5.1}%  {}/{} requests  {} files  {:.0} MB  {:.1} MB/s",
+                        p.fraction() * 100.0,
+                        p.requests_done,
+                        p.requests_total,
+                        p.files_stored,
+                        mb,
+                        mb / self.start.elapsed().as_secs_f64().max(0.001)
+                    );
+                }
+            }
+            Event::InstallFile { path, bytes } => {
+                println!("  {} ({:.1} MiB)", path.display(), bytes as f64 / 1048576.0)
+            }
+            Event::Extracted { files, bytes } => println!(
+                "extracted       {files} files, {:.1} MiB",
+                bytes as f64 / 1048576.0
+            ),
+            Event::BuildInfo { path, version } => {
+                println!("\n.build.info     {} ({version})", path.display())
+            }
+            Event::Staged { version } => println!("\nstaged          {version}, waiting for its release"),
+            Event::ProductDb { path } => {
+                println!(".product.db     {}", path.display())
+            }
+            Event::Registered { code } => {
+                println!("registered      {code} in Agent's product.db")
+            }
+            Event::Incomplete { reasons } => {
+                println!("\n.build.info     NOT written — this run is not a complete install");
+                for reason in reasons {
+                    println!("                ({reason})");
+                }
+            }
+        }
+    }
+}
+
+/// Trip `cancel` on Ctrl-C, the same path a pause takes, so an interrupted
+/// download stops between files and keeps what it stored; a second Ctrl-C
+/// exits at once. The returned token tells an interrupt from any other cancel.
+pub(crate) fn cancel_on_interrupt(cancel: &lightforge_core::tact::download::Cancel) -> lightforge_core::tact::download::Cancel {
+    let interrupted = lightforge_core::tact::download::Cancel::new();
+    let (cancel, flag) = (cancel.clone(), interrupted.clone());
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_err() {
+            return;
+        }
+        flag.cancel();
+        cancel.cancel();
+        if !super::output::json() {
+            eprintln!("\nstopping after the files in flight; Ctrl-C again to quit now");
+        }
+        if tokio::signal::ctrl_c().await.is_ok() {
+            std::process::exit(130);
+        }
+    });
+    interrupted
+}
+
+/// The `result` fields every install-shaped command reports.
+pub(crate) fn summary_json(code: &ProductCode, dest: &std::path::Path, status: &str, summary: &Summary) -> Value {
+    json!({
+        "product": code.as_str(),
+        "status": status,
+        "dest": dest,
+        "version": summary.version,
+        "complete": summary.complete,
+        "reasons": summary.reasons,
+        "files_stored": summary.outcome.files_stored,
+        "bytes_stored": summary.outcome.bytes_stored,
+        "failed": summary.outcome.failed.len(),
+        "flavor": summary.flavor,
+    })
+}
+
 // One parameter per command-line flag.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn download(dest: PathBuf, code: ProductCode, region: String, locale: String, flavor: String, dry_run: bool, optional: Vec<String>, limit_archives: Option<usize>, limit_runs: Option<usize>, skip_loose: bool, install_files: bool, stage: bool, concurrency: usize, gap_kib: u32, checkpoint_mib: u64, cancel_after: Option<u64>, show_install: bool) -> Result<()> {
     use lightforge_core::net::Http;
     use lightforge_core::tact::download::Cancel;
-    use lightforge_core::tact::install::{self, Event, Options as InstallOptions};
+    use lightforge_core::tact::install::{self, Options as InstallOptions};
     use lightforge_core::tact::version::Region;
     use std::time::Instant;
 
@@ -30,100 +227,9 @@ pub(crate) async fn download(dest: PathBuf, code: ProductCode, region: String, l
         ..InstallOptions::default()
     };
 
-    // Event printing, shared by the dry run and the real one. The
-    // index prelude and the transfer are both far too chatty to print
-    // per event, so both are throttled here, not in core.
-    let start = Instant::now();
-    let mut last_index = 0usize;
-    let mut last_report = Instant::now();
-    let mut on_event = move |event: Event| match event {
-        Event::Build { versions_name, build_config, archives } => {
-            println!("build           {versions_name} ({build_config})");
-            println!("archives        {archives}");
-        }
-        Event::Repaired { dir } => {
-            println!("repaired        added owner write to {}", dir.display())
-        }
-        Event::Encoding { entries } => println!("encoding        {entries} entries"),
-        Event::Manifests { download, install, unknown_tags } => {
-            println!("download        {download} entries");
-            println!("install         {install} entries");
-            println!("tags            {unknown_tags:?}");
-        }
-        Event::Wanted { files, bytes } => {
-            println!("wanted          {files} files, {:.1} GiB", gib(bytes))
-        }
-        Event::Indices(step) => {
-            if step.done - last_index >= 100 || step.done == step.total {
-                last_index = step.done;
-                println!("  indices {}/{}", step.done, step.total);
-            }
-        }
-        Event::IndicesDone { cached, downloaded, bytes } => println!(
-            "indices         {cached} cached, {downloaded} downloaded ({:.1} MiB)",
-            bytes as f64 / 1048576.0
-        ),
-        Event::Optional { names } => println!(
-            "optional        {}",
-            match names.is_empty() {
-                true => "none offered".to_owned(),
-                false => names.join(", "),
-            }
-        ),
-        Event::Loose { files } => println!("loose files     {files}"),
-        Event::Located { located, wanted } => {
-            println!("located         {located} of {wanted}")
-        }
-        Event::Planned { requests, files, bytes, padding, already_present, missing } => {
-            println!(
-                "\nplan            {requests} requests, {files} files, {:.2} GiB ({:.2} GiB padding)",
-                gib(bytes),
-                gib(padding)
-            );
-            println!("already present {already_present}");
-            if missing > 0 {
-                println!("UNLOCATABLE     {missing} keys");
-            }
-        }
-        Event::Progress(p) => {
-            if last_report.elapsed().as_secs() >= 2 || p.requests_done == p.requests_total {
-                last_report = Instant::now();
-                let mb = p.bytes_stored as f64 / 1e6;
-                println!(
-                    "  {:>5.1}%  {}/{} requests  {} files  {:.0} MB  {:.1} MB/s",
-                    p.fraction() * 100.0,
-                    p.requests_done,
-                    p.requests_total,
-                    p.files_stored,
-                    mb,
-                    mb / start.elapsed().as_secs_f64().max(0.001)
-                );
-            }
-        }
-        Event::InstallFile { path, bytes } => {
-            println!("  {} ({:.1} MiB)", path.display(), bytes as f64 / 1048576.0)
-        }
-        Event::Extracted { files, bytes } => println!(
-            "extracted       {files} files, {:.1} MiB",
-            bytes as f64 / 1048576.0
-        ),
-        Event::BuildInfo { path, version } => {
-            println!("\n.build.info     {} ({version})", path.display())
-        }
-        Event::Staged { version } => println!("\nstaged          {version}, waiting for its release"),
-        Event::ProductDb { path } => {
-            println!(".product.db     {}", path.display())
-        }
-        Event::Registered { code } => {
-            println!("registered      {code} in Agent's product.db")
-        }
-        Event::Incomplete { reasons } => {
-            println!("\n.build.info     NOT written — this run is not a complete install");
-            for reason in reasons {
-                println!("                ({reason})");
-            }
-        }
-    };
+    // Event printing, shared by the dry run and the real one.
+    let mut reporter = Reporter::new();
+    let json = super::output::json();
 
     let http = Http::new()?;
     let cancel = Cancel::new();
@@ -132,13 +238,26 @@ pub(crate) async fn download(dest: PathBuf, code: ProductCode, region: String, l
         let cancel = cancel.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(secs)).await;
-            println!("\n--- cancelling at {secs}s ---");
+            if !json {
+                println!("\n--- cancelling at {secs}s ---");
+            }
             cancel.cancel();
         });
     }
+    let interrupted = cancel_on_interrupt(&cancel);
 
     if dry_run {
-        let prepared = install::prepare(&http, &dest, &code, &options, &mut on_event).await?;
+        let prepared = install::prepare(&http, &dest, &code, &options, &mut |e| reporter.on_event(e)).await?;
+        drop(reporter);
+        if json {
+            print_result_line(json!({
+                "product": code.as_str(),
+                "status": "dry_run",
+                "dest": dest,
+                "install_files": prepared.install.select(&prepared.tags).len(),
+            }));
+            return Ok(());
+        }
         if show_install {
             let selected = prepared.install.select(&prepared.tags);
             println!("\ninstall files   {} selected of {}", selected.len(), prepared.install.len());
@@ -151,7 +270,20 @@ pub(crate) async fn download(dest: PathBuf, code: ProductCode, region: String, l
     }
 
     let t = Instant::now();
-    let summary = install::run(&http, &dest, &code, &options, &cancel, on_event).await?;
+    let summary = install::run(&http, &dest, &code, &options, &cancel, |e| reporter.on_event(e)).await?;
+    drop(reporter);
+    if interrupted.is_cancelled() && !summary.complete {
+        return Err(typed(ErrorKind::Cancelled, "download interrupted; run it again to resume"));
+    }
+    if json {
+        let status = match (summary.complete, stage) {
+            (true, true) => "staged",
+            (true, false) => "installed",
+            (false, _) => "incomplete",
+        };
+        print_result_line(summary_json(&code, &dest, status, &summary));
+        return Ok(());
+    }
 
     println!(
         "\nstored          {} files, {:.2} GiB in {:.1?}",

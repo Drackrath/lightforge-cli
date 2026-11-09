@@ -18,10 +18,10 @@ OUT=docs/CLI.md
 # the run: a new subcommand should be filed deliberately, not dropped on the
 # floor because this list was not updated with it.
 group_names='Everyday|Setup, Proton and the prefix|Battle.net|Games: install, update, remove|Addons and settings backups|Catalogue'
-group_cmds='paths config doctor status update-check play preflight
+group_cmds='paths config doctor status update-check play preflight list info available running stop capabilities completions
 setup proton proton-check proton-install prefix prefix-init prefix-link prefix-move
 battlenet-fetch battlenet-setup battlenet-run
-download verify reindex move uninstall prune compact build-info
+install update download verify reindex move uninstall prune compact build-info
 addons addon-search addon-install addon-import addon-update addon-remove addon-adopt backup-list backup-create backup-restore
 products'
 
@@ -51,11 +51,24 @@ text, laid out so you can read it in one go.
 $ lightforge --help
 ```
 
-One option applies everywhere:
+Three options apply everywhere:
 
 ```text
 --root <ROOT>   Override the Blizzard root (default: ~/Games/Blizzard)
+-j, --json      Output (and errors) as JSON: results on stdout, progress as
+                NDJSON on stderr
+-v, --verbose   Show logs on stderr (-v, -vv, -vvv)
 ```
+
+With `--json` a failure is one line on stdout,
+`{"error": …, "type": …, "hint": …, "fix": …}`, and the exit code follows the
+type: 1 for `invalid_input`, `not_found` and `unknown`, 2 for a usage error,
+75 `rate_limited`, 82 `timeout`, 83 `cancelled`, 84 `input_closed`,
+85 `disk_full`, 86 `offline`, 87 `busy` (a game or another command holds the
+prefix or the store), 88 `store_damaged`. `lightforge capabilities --json`
+describes all of it for a front end. `LIGHTFORGE_CONFIG_DIR`,
+`LIGHTFORGE_DATA_DIR` and `LIGHTFORGE_CACHE_DIR` move Lightforge's own
+directories.
 
 Most commands take `--product <CODE>` (`wow`, `wow_classic_era`,
 `wow_classic`, …) and default to `wow`. Anything taking a path defaults to the

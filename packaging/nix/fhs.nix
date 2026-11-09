@@ -5,8 +5,9 @@
   lightforge-unwrapped,
 }:
 
-# NixOS has no /lib/ld-linux.so.2 with or without hardware.graphics.enable32Bit,
-# and Proton's binaries need it, so setup would stop at the 32-bit check.
+# Proton's prebuilt binaries expect the FHS loader paths, which NixOS does not
+# have (no /lib/ld-linux.so.2 even with hardware.graphics.enable32Bit), so
+# Lightforge runs inside steam-run's FHS environment.
 # steam-run-free is steam-run without the unfree Steam package.
 symlinkJoin {
   name = "lightforge-${lightforge-unwrapped.version}";

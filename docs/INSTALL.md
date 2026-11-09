@@ -1,8 +1,8 @@
 # Installing Lightforge
 
 Lightforge is one command-line binary, `lightforge`. There's an installer
-script, a raw binary on every release, a `.deb` for Debian/Ubuntu, a COPR
-repository for Fedora, PKGBUILDs for Arch and a Nix flake. You can also build
+script, a raw binary on every release, a `.deb` for Debian/Ubuntu, an rpm
+spec for Fedora, PKGBUILDs for Arch and a Nix flake. You can also build
 it yourself: it's a Rust program with very few dependencies, so that takes
 three commands and a few minutes.
 
@@ -17,13 +17,13 @@ Needs no root and only touches your home folder: it puts `lightforge` in
 again any time to update.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LightforgeProject/lightforge/main/packaging/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Drackrath/lightforge-cli/main/packaging/install.sh | bash
 ```
 
 **Uninstall:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LightforgeProject/lightforge/main/packaging/install.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/Drackrath/lightforge-cli/main/packaging/install.sh | bash -s -- --uninstall
 ```
 
 Uninstalling removes Lightforge itself. Your games, the Wine prefix and your
@@ -45,7 +45,7 @@ Each release carries the bare binary for both architectures,
 never executable, which is why the `chmod`:
 
 ```bash
-curl -fLo lightforge https://github.com/LightforgeProject/lightforge/releases/latest/download/lightforge_linux_x86_64
+curl -fLo lightforge https://github.com/Drackrath/lightforge-cli/releases/latest/download/lightforge_linux_x86_64
 chmod +x lightforge
 ./lightforge doctor
 ```
@@ -56,7 +56,7 @@ Put it anywhere on your `PATH`. To check it first, see
 ## Debian based (Debian, Ubuntu, Pop!_OS, Mint…)
 
 Download `lightforge_<version>-1_amd64.deb` (or `_arm64.deb`) from the
-[releases page](https://github.com/LightforgeProject/lightforge/releases).
+[releases page](https://github.com/Drackrath/lightforge-cli/releases).
 The file name says `1.0.0.beta.11` because GitHub doesn't allow a `~` in an
 asset name. The version inside the package, which `apt` reads and sorts by,
 is `1.0.0~beta.11`:
@@ -69,22 +69,9 @@ sudo apt install ./lightforge_1.0.0.beta.11-1_amd64.deb
 
 ## Fedora
 
-Lightforge has its own [COPR repository](https://copr.fedorainfracloud.org/coprs/simplykenny/lightforge/),
-built from source for every current Fedora release. Add it once, and
-`dnf upgrade` updates Lightforge together with the rest of your system:
-
-```bash
-sudo dnf copr enable simplykenny/lightforge
-sudo dnf install lightforge
-```
-
-On Fedora Atomic (Bazzite, Silverblue):
-
-```bash
-sudo dnf5 copr enable simplykenny/lightforge
-sudo rpm-ostree install lightforge
-sudo systemctl reboot
-```
+This fork has no COPR repository of its own (upstream's COPR packages the
+GUI version). Use the [installer](#the-installer-any-distribution) or the raw
+binary, or build an rpm from `packaging/rpm/lightforge.spec` with `rpmbuild`.
 
 ## Arch, CachyOS, EndeavourOS, Omarchy
 
@@ -92,8 +79,8 @@ sudo systemctl reboot
 upload from. The PKGBUILDs are finished and in the repository, so for now:
 
 ```bash
-git clone https://github.com/LightforgeProject/lightforge.git
-cd lightforge/packaging/aur/lightforge-bin   # the release binary
+git clone https://github.com/Drackrath/lightforge-cli.git
+cd lightforge-cli/packaging/aur/lightforge-bin   # the release binary
 makepkg -si
 ```
 
@@ -118,8 +105,8 @@ any ARM machine, tell me how it went, with the output of `lightforge doctor`.
 ## NixOS
 
 ```bash
-nix run github:LightforgeProject/lightforge -- doctor
-nix profile install github:LightforgeProject/lightforge
+nix run github:Drackrath/lightforge-cli -- doctor
+nix profile install github:Drackrath/lightforge-cli
 ```
 
 The flake starts Lightforge through `steam-run-free`, because Proton needs a
@@ -130,8 +117,8 @@ Steam itself isn't needed.
 ## Build it yourself
 
 ```bash
-git clone https://github.com/LightforgeProject/lightforge.git
-cd lightforge
+git clone https://github.com/Drackrath/lightforge-cli.git
+cd lightforge-cli
 cargo build --release --locked -p lightforge-cli
 ```
 
@@ -158,7 +145,7 @@ In the folder you downloaded into:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem --certificate-identity-regexp '^https://github\.com/LightforgeProject/lightforge/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem --certificate-identity-regexp '^https://github\.com/Drackrath/lightforge-cli/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 The first line says your files are the ones listed; the second says the list
@@ -199,7 +186,7 @@ prints the command for your distro. Here they are:
 
 **Only the Fedora line has been tested on a real machine.** The others should
 be right for how those distributions are packaged, but I haven't tested them.
-If one is wrong, tell me in Discord and I'll fix it.
+If one is wrong, open an issue and I'll fix it.
 
 Two more details:
 
@@ -211,8 +198,11 @@ Two more details:
   i386 and pulls in the 32-bit libraries. You shouldn't need Steam for this,
   though.
 
-**You can skip Battle.net.** WoW works without it, but you won't have the
-in-game shop, the Token or the other games.
+**You can skip Battle.net.** WoW never needs it: Lightforge starts it
+directly and you sign in on the game's own screen. `lightforge setup` leaves
+Battle.net out; `lightforge setup --battlenet` adds it, for Diablo, Overwatch,
+Hearthstone and the other games that sign in through it, and for WoW's in-game
+shop and Token.
 
 ## A binary that runs on other machines
 
@@ -230,6 +220,7 @@ than 2.35. Use the release binary, or build on a system that old.
 ```bash
 lightforge doctor             # what this system has and lacks
 lightforge setup --status     # what is missing: Proton, the prefix, Battle.net
+lightforge setup --battlenet  # only for games other than WoW
 lightforge setup              # provision it
 ```
 
@@ -243,8 +234,7 @@ Then `lightforge download` installs a game and `lightforge play` starts it;
 - **Installer**: run it again.
 - **The raw binary**: download the new one over the old one.
 - **`.deb`**: install the new file over the old one.
-- **Fedora COPR and Fedora Atomic**: `sudo dnf upgrade`, or your system's
-  normal update.
+- **An rpm you built**: build and install the new one.
 - **Arch**: `makepkg -si` again with the new PKGBUILD.
 - **Nix**: `nix profile upgrade` the entry you installed.
 - **From source**:
@@ -284,5 +274,5 @@ libraries, each of them has its own `Lightforge/games/` folder too.
 
 ## Getting help
 
-Ask in **[Discord](https://discord.gg/vtTgmUV9Bq)**. Install problems are the
+Open an issue on **[GitHub](https://github.com/Drackrath/lightforge-cli/issues)**. Install problems are the
 reports that help me most, because I can't reproduce them on my own machine.

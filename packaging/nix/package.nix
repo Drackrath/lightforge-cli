@@ -22,7 +22,7 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ../../Cargo.lock;
 
   meta = {
-    description = "Command-line tool to install, update and play World of Warcraft on Linux";
+    description = "Command-line launcher for World of Warcraft and the other Blizzard games on Linux";
     homepage = cargoToml.workspace.package.homepage;
     license = lib.licenses.gpl3Plus;
     mainProgram = "lightforge";

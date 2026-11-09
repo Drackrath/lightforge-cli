@@ -4,9 +4,8 @@
 
 **Please don't open a public issue for a security problem.**
 
-Message me privately on **[Discord](https://discord.gg/vtTgmUV9Bq)** — join
-and DM me rather than posting in a channel. If you're reading this on a mirror
-that supports private security advisories, that works too.
+Report it privately through GitHub's
+[security advisories](https://github.com/Drackrath/lightforge-cli/security/advisories/new).
 
 Useful things to include, roughly in order of how much they help:
 
@@ -64,7 +63,7 @@ Worth stating so nobody spends an evening on them:
   reporting, no bug reporter. The panic hook only writes to the local log.
   See [DISCLAIMER.md](DISCLAIMER.md#what-leaves-your-machine).
 - **Lightforge never handles credentials.** There's no login path, no token
-  storage, no interception of Battle.net's sign-in. There is nothing in the
+  storage, no interception of the game's or Battle.net's sign-in. There is nothing in the
   process to steal.
 
 ## How downloads are trusted
@@ -90,7 +89,7 @@ look, here's the model, and it doesn't depend on the network being honest:
 
   ```bash
   sha256sum --ignore-missing -c SHA256SUMS
-  cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem --certificate-identity-regexp '^https://github\.com/LightforgeProject/lightforge/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  cosign verify-blob SHA256SUMS --signature SHA256SUMS.sig --certificate SHA256SUMS.pem --certificate-identity-regexp '^https://github\.com/Drackrath/lightforge-cli/\.github/workflows/release\.yml@refs/tags/v' --certificate-oidc-issuer https://token.actions.githubusercontent.com
   ```
 
 If you can break one of those, that's exactly the report I want.

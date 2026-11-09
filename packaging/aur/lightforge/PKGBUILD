@@ -9,9 +9,9 @@ pkgrel=1
 # becomes `1.0.0beta.5` here — which `vercmp` orders *before* `1.0.0`, so the
 # eventual stable release upgrades cleanly and needs no `epoch`.
 _tag=v1.0.0-beta.11
-pkgdesc='Command-line tool to install, update and play World of Warcraft on Linux'
+pkgdesc='Command-line launcher for World of Warcraft and the other Blizzard games on Linux'
 arch=('x86_64')
-url='https://github.com/LightforgeProject/lightforge'
+url='https://github.com/Drackrath/lightforge-cli'
 license=('GPL-3.0-or-later')
 depends=('glibc' 'gcc-libs' 'python')
 makedepends=('cargo')
@@ -31,8 +31,8 @@ source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 # Of GitHub's generated source archive for the tag, which is not
 # byte-identical to anything produced locally. Regenerate with `updpkgsums`
 # once the tag is pushed, before uploading.
-sha256sums=('f7d968c1d2fac0820cb1daf1167996ac8fe10e1fa65f9eeabe5cf2020ef66846')
-_srcdir="$pkgname-${_tag#v}"
+sha256sums=('SKIP')
+_srcdir="lightforge-cli-${_tag#v}"
 
 prepare() {
   cd "$_srcdir"
