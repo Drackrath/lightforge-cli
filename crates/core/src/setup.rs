@@ -384,7 +384,8 @@ async fn install_proton(
     let family = version
         .and_then(proton::ProtonFamily::of_tag)
         .unwrap_or(proton::ProtonFamily::GloriousEggroll);
-    let cache = crate::net::ETagCache::new(dirs.asset_cache_dir().join(family.cache_file()));
+    // Under `assets/`, where earlier versions kept it, so a cache is reused.
+    let cache = crate::net::ETagCache::new(dirs.cache_dir().join("assets").join(family.cache_file()));
     let releases = proton::fetch_releases(http, &cache, family).await?;
 
     let release = match version {

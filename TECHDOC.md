@@ -63,30 +63,27 @@ of that code was wrong, and a real test showed it.
 
 ## The shape of it
 
-A Cargo workspace with three crates, depending in one direction:
+A Cargo workspace with two crates, depending in one direction:
 
-| Crate | Lines | What it is |
-| --- | --- | --- |
-| `lightforge-core` | ~40,000 | All the domain logic. Knows nothing about any UI. |
-| `lightforge-gui` | ~27,000 | The iced application. |
-| `lightforge-cli` | ~4,000 | A thin `clap` front end over the same core. |
+| Crate | What it is |
+| --- | --- |
+| `lightforge-core` | All the domain logic. Knows nothing about any UI. |
+| `lightforge-cli` | `lightforge`, a `clap` front end over core. |
 
-Both front ends use `core`. `core` depends on neither, and never on iced or
-clap. That rule is what makes the CLI possible, and the CLI made most of this
-debuggable: a protocol bug is much easier to chase from a terminal than
-through a UI.
+`core` never depends on clap, so any other front end can use it the same way.
+There used to be a graphical launcher beside the CLI; it was removed, and the
+CLI is the whole interface now.
 
 **`core` is synchronous except at the network edge.** Everything that touches
 HTTP is an `async fn` in `net.rs` and the modules that call it. Everything
-else is normal blocking code that a test can call directly. The GUI runs the
-async parts on tokio from `tasks/`, and blocking work on `spawn_blocking`, so
-the render thread never waits on either.
+else is normal blocking code that a test can call directly. The CLI runs the
+async parts on tokio.
 
 **Errors**: each module has a `thiserror` enum for what can go wrong in it
 (`tact::download::DownloadError`, `library::LibraryError`, …), and
-`error::CoreError` collects them at the crate boundary. The CLI and GUI wrap
-those in `anyhow`. Error text ends up in a status line the user reads, so it's
-written as a sentence and not as a type name.
+`error::CoreError` collects them at the crate boundary. The CLI wraps those in
+`anyhow`. Error text ends up in front of the user, so it's written as a
+sentence and not as a type name.
 
 **TLS is rustls**, not the system OpenSSL, so it behaves the same whatever
 crypto policy a distribution sets.
@@ -118,7 +115,7 @@ Lightforge's own data follows XDG and is kept apart from the games:
 ```text
 ~/.config/lightforge/config.toml      settings, written atomically
 ~/.local/share/lightforge/            Proton builds, the addon ledger, the queue, logs
-~/.cache/lightforge/                  artwork, catalogues (disposable)
+~/.cache/lightforge/                  catalogues (disposable)
 ```
 
 ## Getting a game: TACT / NGDP
@@ -377,8 +374,8 @@ that the target store doesn't already have, reads every copy back, and then
 writes the game's `.build.info` row in the target. That row is the commit:
 until it's written, the game still plays from the old install. Only after the
 config points at the new library is the old copy removed, so a crash in
-between leaves the game in two places, never in none. A copy left behind that way shows up in
-Game Settings with a button to remove it.
+between leaves the game in two places, never in none (`migrate::leftovers`
+finds a copy left behind that way).
 
 ## Addons
 
@@ -404,50 +401,23 @@ The rest:
 - **Channels are a minimum**: choosing "beta" means beta *or stable*, so
   an addon that ships a release after a beta still updates to it.
 
-## Assets and the catalogue
+## The catalogue
 
-`assets.rs` gets a product's artwork through a hosted manifest, cached by URL
-and revalidated with ETags, so the check at startup costs a `304`. The
-**product catalogue is in that manifest too**, not in the binary: a new PTR is
-one line in a published table plus a deploy, no release. Only a product's
-*identity* (its name and art) comes from the server.
+The products Lightforge knows are built in (`product.rs`, from the version
+service's probe table), and `lightforge products` asks Blizzard which of them
+are live.
 
 The install folder and executable come from Blizzard's product config for
 that product (`tact/product_config.rs`), with the product code as the fallback.
 Older builds derived both from the code alone: `wow_<flavor>` installs to
 `_<flavor>_`, and `wowf` (WoW: Forever, which installs to `_forever_`) was a
-built-in exception. Because those builds read the same manifest, **the
-manifest must not name a code that older builds derive wrongly**:
-1.0.0-beta.3 would install a listed `wowf` into a literal `wowf/` folder. So
-Forever's art stays on the beta's entry, and the live branch uses it from
-there.
+built-in exception.
 
-## The GUI
-
-`crates/launcher-gui`, iced 0.14, Elm architecture: one `Message` enum, one
-`update`, one `view`.
-
-- **`update/`** has one file per area (products, launch, downloads, addons,
-  storage and so on), and each `Message` is handled in exactly one of them; a
-  test fails otherwise.
-- **`tasks/`** is the async boundary: every network or blocking call the UI
-  makes goes through a function there and comes back as a `Message`.
-- **`state.rs`** (in core, not the GUI) is the state machine behind the main
-  button. Three rules there are intentional: `.build.info` marks a complete
-  install, an unreachable version service does *not* block launching a
-  complete install, and a running transfer takes priority over what the last
-  disk scan said.
-- **`art.rs`** decodes artwork once and keeps it as RGBA, because the renderer
-  keeps a decoded image only while drawing. JPEGs are decoded at a reduced DCT
-  scale when only a thumbnail is needed: a 0.5 MB buffer instead of 33 MB.
-- **The allocator is tuned at startup.** `mallopt` fixes the mmap threshold,
-  so large short-lived image buffers go back to the OS instead of staying in
-  glibc's per-thread arenas. Measured: it took the old News page from 444 MB
-  resident to 149 MB.
-- **Rendering** is wgpu, with an automatic tiny-skia fallback;
-  `ICED_BACKEND=tiny-skia` forces software.
-- **One instance per config.** A second launch brings the open window to the
-  front and exits.
+**`state.rs`** is the state machine that decides what a product needs next
+(`lightforge status`). Three rules there are intentional: `.build.info` marks
+a complete install, an unreachable version service does *not* block launching
+a complete install, and a running transfer takes priority over what the last
+disk scan said.
 
 ## Configuration
 
@@ -459,7 +429,7 @@ the addon ledger.
 
 ## Tests
 
-`cargo test` runs 892 tests in a few seconds. The kinds:
+`cargo test` runs the whole suite in a few seconds. The kinds:
 
 - **Unit tests** next to the code, testing behaviour, not implementation.
   Many are regression tests with a comment naming the bug.
@@ -493,8 +463,7 @@ newer than 2.35** (`GLIBC_MAX`, Ubuntu 22.04's). Without that check, a build tha
 glibc works locally and fails on a Steam Deck. Here, a host build needed
 glibc 2.44, newer than SteamOS (~2.37) and Bazzite (~2.40).
 
-The binary links `libc`, `libm`, `libgcc_s` and `libudev` (gamepads, through
-gilrs) and nothing else; Vulkan, Wayland and X11 are all loaded at runtime.
+The binary links `libc`, `libm` and `libgcc_s` and nothing else.
 
 ## Non-goals
 

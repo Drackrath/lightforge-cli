@@ -33,24 +33,16 @@ OBJDUMP_aarch64 := $(IN_IMAGE) aarch64-linux-gnu-objdump
 RUN_x86_64  :=
 RUN_aarch64 := $(IN_IMAGE) qemu-aarch64
 
-# The AppImage's static type-2 runtime, pinned: it needs no libfuse2 on the
-# host, which Ubuntu 22.04+ and Fedora Atomic do not ship. The AppImage has no
-# version in its name: the self-update replaces the file in place, and
-# `releases/latest/download/` then always has it.
-APPIMAGE_RUNTIME_URL            := https://github.com/AppImage/type2-runtime/releases/download/20251108
-APPIMAGE_RUNTIME_SHA256_x86_64  := 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
-APPIMAGE_RUNTIME_SHA256_aarch64 := 00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
-
 # The highest glibc a release may ask for, and what the deb and rpm declare.
 # Ubuntu 22.04 is 2.35; the Debian 12 container is 2.36, so this also catches
 # a dependency that starts using a 2.36 symbol, not only a build that escaped
 # the container and picked up the host's libc.
 GLIBC_MAX ?= 2.35
 
-BINARIES := lightforge lightforge-gui
+BINARIES := lightforge
 
 .PHONY: release image check-glibc clean-release cli-doc check-cli-doc \
-	packages deb rpm tarball appimage installer checksums github-names check-binaries \
+	packages deb rpm tarball checksums github-names check-binaries \
 	check-spec clean-packages install uninstall
 
 ## Build release binaries against an old glibc, and verify they are portable.
@@ -109,45 +101,28 @@ check-cli-doc: cli-doc
 
 ## Install a source build the way a package would.
 ##
-## For someone building from the tree: `cargo build --release` leaves two
-## binaries and nothing else, so without this there is no menu entry and no
-## icon. `PREFIX=$$HOME/.local make install` needs no root.
+## For someone building from the tree: the binary and the licence, where a
+## package would put them. `PREFIX=$$HOME/.local make install` needs no root.
 ##
 ## The three packages do **not** call this — each of them lists the same files
 ## in its own idiom, because that is what their tooling reads.
 install:
-	install -Dm755 target/release/lightforge-gui $(DESTDIR)$(PREFIX)/bin/lightforge-gui
-	install -Dm755 target/release/lightforge     $(DESTDIR)$(PREFIX)/bin/lightforge
-	install -Dm644 packaging/pro.tuxcore.Lightforge.desktop \
-	  $(DESTDIR)$(PREFIX)/share/applications/pro.tuxcore.Lightforge.desktop
-	install -Dm644 packaging/pro.tuxcore.Lightforge.metainfo.xml \
-	  $(DESTDIR)$(PREFIX)/share/metainfo/pro.tuxcore.Lightforge.metainfo.xml
-	@for size in 16 22 24 32 48 64 128 256 512; do \
-	  install -Dm644 "packaging/icons/hicolor/$${size}x$${size}/apps/pro.tuxcore.Lightforge.png" \
-	    "$(DESTDIR)$(PREFIX)/share/icons/hicolor/$${size}x$${size}/apps/pro.tuxcore.Lightforge.png"; \
-	done
-	install -Dm644 packaging/icons/hicolor/scalable/apps/pro.tuxcore.Lightforge.svg \
-	  $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/pro.tuxcore.Lightforge.svg
+	install -Dm755 target/release/lightforge $(DESTDIR)$(PREFIX)/bin/lightforge
 	install -Dm644 LICENSE $(DESTDIR)$(PREFIX)/share/licenses/lightforge/LICENSE
 	@echo "installed to $(DESTDIR)$(PREFIX)"
 
 uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/bin/lightforge-gui \
-	      $(DESTDIR)$(PREFIX)/bin/lightforge \
-	      $(DESTDIR)$(PREFIX)/share/applications/pro.tuxcore.Lightforge.desktop \
-	      $(DESTDIR)$(PREFIX)/share/metainfo/pro.tuxcore.Lightforge.metainfo.xml \
-	      $(DESTDIR)$(PREFIX)/share/icons/hicolor/*/apps/pro.tuxcore.Lightforge.png \
-	      $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/pro.tuxcore.Lightforge.svg
+	rm -f $(DESTDIR)$(PREFIX)/bin/lightforge
 	rm -rf $(DESTDIR)$(PREFIX)/share/licenses/lightforge
 	@echo "removed from $(DESTDIR)$(PREFIX)"
 
 ## Everything a release page carries, from one `make release`.
 ##
 ## The three package targets deliberately do **not** depend on `release`:
-## rebuilding 27 MB of GUI three times to produce three files from the same
-## two binaries is a minute nobody needs to spend. Run `make release` first —
-## each target checks the binaries are there.
-packages: check-spec tarball appimage deb rpm installer checksums
+## rebuilding three times to produce three files from the same binary is
+## time nobody needs to spend. Run `make release` first — each target checks
+## the binary is there.
+packages: check-spec tarball deb rpm checksums
 	@echo
 	@echo "Release artifacts in $(DIST):"
 	@ls -lh $(DIST) | awk 'NR>1 {print "  " $$9 "  " $$5}'
@@ -155,9 +130,9 @@ packages: check-spec tarball appimage deb rpm installer checksums
 ## The portable tarball: what the `lightforge-bin` PKGBUILD installs, and what
 ## anyone without a package manager we support downloads.
 ##
-## It carries the desktop entry, the icons and the AppStream file beside the
-## binaries, so the PKGBUILD installs from this one source and the Arch
-## package has the same contents as the deb and the rpm.
+## It carries the docs beside the binary, so the PKGBUILD installs from this
+## one source and the Arch package has the same contents as the deb and the
+## rpm.
 tarball: $(addprefix tarball-,$(ARCHES))
 
 tarball-%: check-binaries-%
@@ -165,55 +140,10 @@ tarball-%: check-binaries-%
 	@rm -rf target/tarball/$*/lightforge-$(VERSION)
 	@mkdir -p target/tarball/$*/lightforge-$(VERSION)
 	@cp $(addprefix $(OUT_$*)/,$(BINARIES)) target/tarball/$*/lightforge-$(VERSION)/
-	@cp -r packaging/icons packaging/pro.tuxcore.Lightforge.desktop \
-	       packaging/pro.tuxcore.Lightforge.metainfo.xml \
-	       LICENSE README.md RELEASES.md TROUBLESHOOTING.md docs/CLI.md \
+	@cp LICENSE README.md RELEASES.md TROUBLESHOOTING.md docs/CLI.md \
 	       target/tarball/$*/lightforge-$(VERSION)/
 	@tar -czf $(DIST)/lightforge-$(VERSION)-$*-linux.tar.gz -C target/tarball/$* lightforge-$(VERSION)
 	@echo "ok   $(DIST)/lightforge-$(VERSION)-$*-linux.tar.gz"
-
-## The AppImage: the runtime with a squashfs of the AppDir appended, which is
-## all appimagetool does too. Packed in the build container, so the host needs
-## no squashfs-tools. Nothing is bundled besides the two binaries; see AppRun.
-appimage: $(addprefix appimage-,$(ARCHES))
-
-appimage-%: check-binaries-% image target/appimage/runtime-20251108-%
-	@mkdir -p $(DIST)
-	@rm -rf target/appimage/$*
-	@install -Dm755 packaging/appimage/AppRun target/appimage/$*/AppDir/AppRun
-	@install -Dm755 -t target/appimage/$*/AppDir/usr/bin $(addprefix $(OUT_$*)/,$(BINARIES))
-	@mkdir -p target/appimage/$*/AppDir/usr/share
-	@cp -r packaging/icons target/appimage/$*/AppDir/usr/share/
-	@install -Dm644 packaging/pro.tuxcore.Lightforge.metainfo.xml \
-	   target/appimage/$*/AppDir/usr/share/metainfo/pro.tuxcore.Lightforge.metainfo.xml
-	@# TryExec would hide an entry Gear Lever or AppImageLauncher integrates.
-	@sed '/^TryExec=/d' packaging/pro.tuxcore.Lightforge.desktop \
-	   > target/appimage/$*/AppDir/pro.tuxcore.Lightforge.desktop
-	@install -Dm644 target/appimage/$*/AppDir/pro.tuxcore.Lightforge.desktop \
-	   target/appimage/$*/AppDir/usr/share/applications/pro.tuxcore.Lightforge.desktop
-	@cp packaging/icons/hicolor/256x256/apps/pro.tuxcore.Lightforge.png target/appimage/$*/AppDir/
-	@ln -s pro.tuxcore.Lightforge.png target/appimage/$*/AppDir/.DirIcon
-	$(IN_IMAGE) mksquashfs target/appimage/$*/AppDir target/appimage/$*/squashfs \
-	  -root-owned -noappend -comp zstd -quiet
-	@cat target/appimage/runtime-20251108-$* target/appimage/$*/squashfs > $(DIST)/Lightforge-$*.AppImage
-	@chmod 755 $(DIST)/Lightforge-$*.AppImage
-	@echo "ok   $(DIST)/Lightforge-$*.AppImage"
-
-# Kept between runs: pinned, so it never changes.
-.PRECIOUS: target/appimage/runtime-20251108-%
-target/appimage/runtime-20251108-%:
-	@mkdir -p $(@D)
-	curl -fsSL -o $@.part $(APPIMAGE_RUNTIME_URL)/runtime-$*
-	@echo "$(APPIMAGE_RUNTIME_SHA256_$*)  $@.part" | sha256sum -c --quiet
-	@mv $@.part $@
-
-## The double-click installer, published beside the packages so the release
-## page has one file a Steam Deck user can take. It carries no version: it
-## fetches install.sh from main, which picks the newest release itself.
-installer:
-	@mkdir -p $(DIST)
-	@cp packaging/installer/lightforge-installer.desktop $(DIST)/
-	@echo "ok   $(DIST)/lightforge-installer.desktop"
 
 ## A .deb, written natively — no `dpkg` on this machine.
 ##
@@ -223,7 +153,7 @@ installer:
 deb: check-binaries-x86_64
 	@mkdir -p $(DIST)
 	CARGO_TARGET_DIR=target/container cargo deb \
-	  --package lightforge-gui \
+	  --package lightforge-cli \
 	  --no-build --no-strip \
 	  --deb-version '$(PKGVER)-1' \
 	  --output $(DIST)/
@@ -232,7 +162,7 @@ deb: check-binaries-x86_64
 rpm: check-binaries-x86_64
 	@mkdir -p $(DIST)
 	cargo generate-rpm \
-	  --package crates/launcher-gui \
+	  --package crates/launcher-cli \
 	  --target-dir target/container \
 	  --set-metadata 'version = "$(PKGVER)"' \
 	  --set-metadata 'release = "1"' \
@@ -255,14 +185,13 @@ github-names:
 
 ## The sums the AUR PKGBUILDs and the release page quote.
 checksums: github-names
-	@cd $(DIST) && rm -f SHA256SUMS && sha256sum lightforge* Lightforge-*.AppImage > SHA256SUMS
+	@cd $(DIST) && rm -f SHA256SUMS && sha256sum lightforge* > SHA256SUMS
 	@cat $(DIST)/SHA256SUMS
 
 ## Fail with a useful sentence rather than a missing-file error from tar,
 ## and refuse binaries built from another version: packages are named from
 ## Cargo.toml, so stale binaries would ship under the new name (beta.2 nearly
-## did). The timeout is for a GUI built before it answered `--version`,
-## which would open a window instead and hold the build.
+## did). The timeout keeps a binary that hangs from holding the build.
 check-binaries: $(addprefix check-binaries-,$(ARCHES))
 
 ## The aarch64 build answers through qemu in the container: the same question,
@@ -284,7 +213,7 @@ check-spec:
 	@echo "ok   spec is $(VERSION)"
 
 clean-packages:
-	rm -rf $(DIST) target/tarball target/debian target/container/generate-rpm $(addprefix target/appimage/,$(ARCHES))
+	rm -rf $(DIST) target/tarball target/debian target/container/generate-rpm
 
 clean-release:
 	rm -rf target/container

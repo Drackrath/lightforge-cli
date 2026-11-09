@@ -31,9 +31,9 @@ there's no self-updater yet.
 
 ## In scope
 
-- The launcher and the CLI.
-- The services they talk to, which I run: the asset host, the addon proxy and
-  the screenshot endpoint behind `lightforge.tuxcore.pro`.
+- The `lightforge` binary and the installer script.
+- The service it talks to that I run: the addon proxy behind
+  `lightforge.tuxcore.pro`.
 - Anything that lets a third party put code or files on a user's machine
   through Lightforge.
 
@@ -59,8 +59,7 @@ Worth stating so nobody spends an evening on them:
   user data — the trade-off is deliberate, and the API key behind it never
   reaches the client.
 - **Nothing is sent without being asked for.** No telemetry, no crash
-  reporting, no panic hook. A bug report goes out only when somebody fills in
-  the dialog and presses Send, and the dialog shows the whole payload first.
+  reporting, no bug reporter. The panic hook only writes to the local log.
   See [DISCLAIMER.md](DISCLAIMER.md#what-leaves-your-machine).
 - **Lightforge never handles credentials.** There's no login path, no token
   storage, no interception of Battle.net's sign-in. There is nothing in the

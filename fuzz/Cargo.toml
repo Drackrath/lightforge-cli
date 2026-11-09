@@ -77,17 +77,3 @@ path = "fuzz_targets/steam_libraryfolders.rs"
 test = false
 doc = false
 bench = false
-
-[[bin]]
-name = "steam_loginusers"
-path = "fuzz_targets/steam_loginusers.rs"
-test = false
-doc = false
-bench = false
-
-[[bin]]
-name = "steam_shortcuts"
-path = "fuzz_targets/steam_shortcuts.rs"
-test = false
-doc = false
-bench = false

@@ -1,7 +1,6 @@
 //! Steam installation discovery.
 //!
-//! Read-only; the one write is Lightforge's own library entry
-//! ([`crate::steam_shortcut`]), when asked.
+//! Read-only.
 
 use std::path::{Path, PathBuf};
 

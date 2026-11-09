@@ -1,6 +1,6 @@
 //! Driving a whole install: version service -> plan -> download -> store.
 //!
-//! Shared by both front ends, reporting through [`Event`]s. The order matters:
+//! Reporting through [`Event`]s, so any front end can draw it. The order matters:
 //!
 //! 1. Archive indices are cached first. Nothing can be *located* without them.
 //! 2. What the store already holds is subtracted, so a download resumes.

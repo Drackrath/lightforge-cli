@@ -22,7 +22,6 @@ pub(crate) fn paths(ctx: Ctx) -> Result<()> {
     println!("battle.net      {}", layout.battle_net_dir().display());
     println!("wow symlink     {}", layout.wow_symlink().display());
     println!("config file     {}", dirs.config_file().display());
-    println!("asset cache     {}", dirs.asset_cache_dir().display());
     println!("proton dir      {}", dirs.proton_dir().display());
     println!("log dir         {}", dirs.log_dir().display());
 
@@ -95,81 +94,6 @@ pub(crate) async fn products(region: String, codes: Vec<String>, all: bool, conc
     Ok(())
 }
 
-pub(crate) async fn assets(code: ProductCode, source: Option<String>) -> Result<()> {
-    use lightforge_core::assets::{Origin, Pipeline, Store};
-    use lightforge_core::net::Http;
-
-    let dirs = AppDirs::discover().context("resolving XDG directories")?;
-    let config = Config::load_or_default(&dirs.config_file())
-        .with_context(|| format!("reading {}", dirs.config_file().display()))?;
-    let origin = match source.as_deref().map(str::trim) {
-        Some(s) if s.contains("://") => Origin::Http(s.to_owned()),
-        Some(s) => Origin::Dir(PathBuf::from(s)),
-        None => config.asset_origin(),
-    };
-
-    let store = Store::new(dirs.asset_cache_dir());
-    println!("origin          {origin:?}");
-    println!("cache           {}", store.dir().display());
-
-    let pipeline = Pipeline::new(origin, store);
-
-    // The cache-only path the GUI's first frame uses; `None` here is why
-    // the dashboard opens unthemed.
-    let started = std::time::Instant::now();
-    match pipeline.cached(&code) {
-        Some(branding) => println!(
-            "cache-first     hit in {:?} ({})",
-            started.elapsed(),
-            branding.label
-        ),
-        None => println!(
-            "cache-first     MISS in {:?} — the GUI opens unthemed",
-            started.elapsed()
-        ),
-    }
-
-    let http = Http::new()?;
-    let started = std::time::Instant::now();
-    let manifest = pipeline.manifest(&http).await.context("fetching the manifest")?;
-    println!("manifest        {:?}", started.elapsed());
-    println!("schema          {}", manifest.schema);
-    println!("themes          {}", manifest.products.len());
-    println!("default         {}", manifest.default.as_deref().unwrap_or("-"));
-
-    let started = std::time::Instant::now();
-    let branding = pipeline
-        .resolve_with(&http, &manifest, &code)
-        .await
-        .with_context(|| format!("resolving branding for {}", code.as_str()))?;
-    println!("images          {:?}", started.elapsed());
-
-    println!("\nproduct         {}", code.as_str());
-    println!("label           {}", branding.label);
-    let slots = [
-        ("logo", Some(&branding.logo)),
-        ("background", Some(&branding.background)),
-        ("icon", branding.icon.as_ref()),
-    ];
-    for (slot, asset) in slots {
-        let Some(asset) = asset else {
-            println!("{slot:<15} —");
-            continue;
-        };
-        let size = std::fs::metadata(&asset.path).map(|m| m.len()).unwrap_or(0);
-        let height = match asset.height {
-            Some(h) => format!(", {h}px"),
-            None => String::new(),
-        };
-        println!(
-            "{slot:<15} {} ({size} bytes, {}{height})",
-            asset.path.display(),
-            if asset.fetched { "fetched" } else { "cached" }
-        );
-    }
-    Ok(())
-}
-
 pub(crate) async fn status(ctx: Ctx, code: ProductCode, region: String, offline: bool) -> Result<()> {
     let Ctx { layout, .. } = ctx;
     use lightforge_core::net::Http;
@@ -209,7 +133,7 @@ pub(crate) async fn status(ctx: Ctx, code: ProductCode, region: String, offline:
 
     // No transfer: the CLI is one-shot, so nothing of ours is running.
     let state = decide(&local, remote.as_ref(), None);
-    println!("\nbutton          [ {} ]", state.label());
+    println!("\naction          {}", state.label());
     println!("state           {state:?}");
     println!("playable        {}", state.is_playable());
     Ok(())

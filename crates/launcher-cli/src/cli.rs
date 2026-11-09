@@ -93,7 +93,7 @@ pub(crate) enum Command {
         #[arg(long)]
         skip_preflight: bool,
     },
-    /// Launch the game directly under Proton, the `[ PLAY ]` path.
+    /// Launch the game directly under Proton.
     ///
     /// Runs pre-flight first, then starts `Wow.exe` through the prefix's
     /// Windows-visible path. Battle.net is not involved.
@@ -241,9 +241,9 @@ pub(crate) enum Command {
         /// extract, and where each would land.
         #[arg(long)]
         show_install: bool,
-        /// Trip the cancel token after this many seconds, the same path the
-        /// GUI's pause button takes. For measuring how long a pause takes to
-        /// come to rest.
+        /// Trip the cancel token after this many seconds, the path a paused
+        /// download takes. For measuring how long a pause takes to come to
+        /// rest.
         #[arg(long)]
         cancel_after: Option<u64>,
     },
@@ -453,8 +453,8 @@ pub(crate) enum Command {
     /// Give back the shared store's space held by one product's data: the
     /// files no other installed product uses. Prints the plan unless `--yes`.
     ///
-    /// Uninstalling from the GUI does this itself. This is for a product
-    /// removed before it could, pass the `--build-key` it had installed.
+    /// `uninstall` does this itself. This is for a product removed before it
+    /// could, pass the `--build-key` it had installed.
     Reclaim {
         #[arg(long, value_parser = commands::product_code)]
         product: ProductCode,
@@ -477,7 +477,7 @@ pub(crate) enum Command {
     /// `--yes`.
     ///
     /// Only files that option alone brought in and no installed build needs.
-    /// It does not change what is opted in to: the GUI does both together.
+    /// It does not change what is opted in to.
     DropOptional {
         #[arg(long, value_parser = commands::product_code)]
         product: ProductCode,
@@ -572,17 +572,7 @@ pub(crate) enum Command {
         #[arg(long, default_value_t = 8)]
         concurrency: usize,
     },
-    /// Resolve a product's themed branding through the asset pipeline.
-    Assets {
-        /// Product code to theme, e.g. `wow`.
-        #[arg(long, default_value = "wow", value_parser = commands::product_code)]
-        product: ProductCode,
-        /// Base URL or fixture directory. Defaults to `assets_source` in
-        /// config.toml, else the built-in source.
-        #[arg(long)]
-        source: Option<String>,
-    },
-    /// Resolve the primary action button's state for a product.
+    /// Resolve what a product needs next: install, update, play, or wait.
     Status {
         /// Product code, e.g. `wow` or `wow_classic_era`.
         #[arg(long, default_value = "wow", value_parser = commands::product_code)]

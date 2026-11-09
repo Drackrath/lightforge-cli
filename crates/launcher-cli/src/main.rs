@@ -1,6 +1,6 @@
-//! Headless consumer of `lightforge-core`.
+//! `lightforge`, the command-line front end of `lightforge-core`.
 //!
-//! For inspecting core without the GUI, on a machine with no display.
+//! Every feature of the launcher, from a terminal, with no display needed.
 
 use std::path::PathBuf;
 
@@ -65,13 +65,13 @@ async fn run() -> Result<()> {
     restore_sigpipe();
     let cli = Cli::parse();
 
-    // An unreadable config stops every command, as in the GUI.
+    // An unreadable config stops every command.
     let dirs = AppDirs::discover().context("resolving XDG directories")?;
     let config = Config::load_or_default(&dirs.config_file())
         .with_context(|| format!("reading {}", dirs.config_file().display()))?;
 
     // `--root` overrides everything; otherwise the config decides, and only
-    // then the default. The GUI resolves it through the same function.
+    // then the default.
     let layout = match &cli.root {
         Some(root) => Layout::with_root(root),
         None => config.layout().context("resolving the Blizzard root")?,
@@ -166,7 +166,6 @@ async fn run() -> Result<()> {
         Command::ProductDb { path, products, account_country, geo_country, agent_tags, dry_run } => commands::battlenet::product_db(ctx, path, products, account_country, geo_country, agent_tags, dry_run),
         Command::Setup { status, proton } => commands::proton::setup(ctx, status, proton).await,
         Command::Products { region, codes, all, concurrency } => commands::info::products(region, codes, all, concurrency).await,
-        Command::Assets { product, source } => commands::info::assets(product, source).await,
         Command::Status { product, region, offline } => commands::info::status(ctx, product, region, offline).await,
         Command::UpdateCheck { path, product, region } => commands::info::update_check(ctx, path, product, region).await,
         Command::Content { path, product, locale, fdid, file } => commands::inspect::content(path, product, locale, fdid, file),

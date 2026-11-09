@@ -14,11 +14,9 @@ symlinkJoin {
   nativeBuildInputs = [ makeWrapper ];
 
   postBuild = ''
-    for bin in lightforge lightforge-gui; do
-      rm $out/bin/$bin
-      makeWrapper ${steam-run-free}/bin/steam-run $out/bin/$bin \
-        --add-flags ${lightforge-unwrapped}/bin/$bin
-    done
+    rm $out/bin/lightforge
+    makeWrapper ${steam-run-free}/bin/steam-run $out/bin/lightforge \
+      --add-flags ${lightforge-unwrapped}/bin/lightforge
   '';
 
   inherit (lightforge-unwrapped) version meta;

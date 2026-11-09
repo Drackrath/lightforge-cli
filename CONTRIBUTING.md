@@ -7,13 +7,12 @@ The fastest way to reach me is **[Discord](https://discord.gg/vtTgmUV9Bq)**.
 
 ## Reporting a bug
 
-Use the built-in reporter: **☰ › Report a bug**. It collects the version,
-your GPU and driver, the session type and the last things the launcher did,
-and you can drop a screenshot onto the window. It shows you everything before
-it sends anything.
+Post in Discord or open an issue with:
 
-If the launcher won't start at all, post in Discord with whatever it printed
-in the terminal.
+- `lightforge --version` and the output of `lightforge doctor`;
+- the command you ran and everything it printed;
+- the end of `~/.local/share/lightforge/logs/lightforge-cli.log`, run with
+  `LIGHTFORGE_LOG=debug` if you can reproduce it.
 
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md) covers the problems I already know
 about, so have a look there first.

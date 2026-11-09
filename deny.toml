@@ -4,8 +4,8 @@ all-features = true
 
 [advisories]
 yanked = "deny"
-# ttf-parser (iced's font stack) and zvariant/zbus_names (ashpd, iced_winit)
-# only arrive transitively; a notice about them is nothing this repo can act on.
+# A notice about a crate that only arrives transitively is nothing this repo
+# can act on.
 unmaintained = "workspace"
 ignore = [
     # zip 2.x. All three are about `ZipArchive::extract` and
@@ -44,12 +44,9 @@ allow = [
 confidence-threshold = 0.9
 
 [bans]
-# 30-odd crates come in two versions through iced, wgpu and the RustCrypto
-# 0.10 -> 0.11 split; denying them would be a skip list nobody maintains.
+# Some crates come in two versions through the RustCrypto 0.10 -> 0.11
+# split; denying them would be a skip list nobody maintains.
 multiple-versions = "warn"
-skip = [
-    { crate = "image@0.24", reason = "the GUI's own decoder: only 0.24's JPEG decoder can scale a DCT on decode; iced keeps 0.25 codec-free for its types" },
-]
 
 [sources]
 unknown-registry = "deny"

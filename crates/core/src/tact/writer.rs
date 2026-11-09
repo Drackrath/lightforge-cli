@@ -37,8 +37,8 @@ pub const MAX_ARCHIVE_ID: u16 = (1 << 10) - 1;
 /// produces generation 0.
 pub const FIRST_GENERATION: u32 = 0x32;
 
-/// Exclusive hold on a CASC store against other Lightforge processes (the
-/// CLI, a second GUI), released on drop. Two writers pick the same next
+/// Exclusive hold on a CASC store against other Lightforge processes (a
+/// second `lightforge` run), released on drop. Two writers pick the same next
 /// `data.NNN` and the second truncates the first one's archive.
 ///
 /// An `flock` on the data directory itself, so no lock file appears among
