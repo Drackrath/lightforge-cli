@@ -3,9 +3,30 @@
 use super::proton_runner;
 use crate::*;
 
+/// A Proton build as `--json` describes it.
+fn build_json(release: &lightforge_core::proton::ProtonRelease) -> serde_json::Value {
+    serde_json::json!({
+        "version": release.version,
+        "flavor": format!("{:?}", release.flavor),
+        "source": format!("{:?}", release.source),
+        "path": release.path,
+        "supported": release.flavor.is_supported(),
+    })
+}
+
 pub(crate) fn proton() -> Result<()> {
     let dirs = AppDirs::discover().context("resolving XDG directories")?;
     let steam = lightforge_core::steam::SteamRoot::discover();
+    if super::output::json() {
+        let installed = lightforge_core::proton::discover_all(steam.as_ref(), &dirs.proton_dir());
+        super::output::print_json(&serde_json::json!({
+            "steam_root": steam.as_ref().map(|s| s.path().to_path_buf()),
+            "steam_libraries": steam.as_ref().map(|s| s.library_paths()).unwrap_or_default(),
+            "managed_dir": dirs.proton_dir(),
+            "builds": installed.iter().map(build_json).collect::<Vec<_>>(),
+        }));
+        return Ok(());
+    }
     match &steam {
         Some(s) => {
             println!("steam root   {}", s.path().display());
@@ -54,6 +75,33 @@ pub(crate) async fn proton_check() -> Result<()> {
         .await
         .context("fetching Proton-GE releases")?;
 
+    if super::output::json() {
+        let steam = lightforge_core::steam::SteamRoot::discover();
+        let installed: Vec<_> = proton::discover_all(steam.as_ref(), &dirs.proton_dir())
+            .into_iter()
+            .filter(|r| r.flavor == proton::ProtonFlavor::GloriousEggroll)
+            .map(|build| {
+                let update = proton::check_for_update(&build.version, &releases);
+                serde_json::json!({
+                    "version": build.version,
+                    "path": build.path,
+                    "update": update.map(|n| n.available.clone()),
+                })
+            })
+            .collect();
+        let latest = proton::latest_stable(&releases);
+        super::output::print_json(&serde_json::json!({
+            "releases": releases.len(),
+            "revalidated": cached,
+            "latest_stable": latest.map(|l| serde_json::json!({
+                "tag": l.tag_name,
+                "size": l.tarball().map(|a| a.size),
+                "checksum": l.tarball().and_then(|t| l.checksum_for(t)).map(|a| a.name.clone()),
+            })),
+            "installed": installed,
+        }));
+        return Ok(());
+    }
     println!(
         "{} releases ({})",
         releases.len(),
@@ -148,6 +196,17 @@ pub(crate) async fn proton_install(version: Option<String>) -> Result<()> {
 pub(crate) fn prefix(ctx: Ctx) -> Result<()> {
     let Ctx { layout, .. } = ctx;
     let status = PrefixStatus::inspect(&layout);
+    if super::output::json() {
+        super::output::print_json(&serde_json::json!({
+            "compat_data": status.compat_data,
+            "prefix": status.prefix,
+            "initialized": status.initialized,
+            "built_by": status.built_by,
+            "symlink": status.link.describe(),
+            "ready": status.is_ready(),
+        }));
+        return Ok(());
+    }
     println!("compat data     {}", status.compat_data.display());
     println!("prefix          {}", status.prefix.display());
     println!(
@@ -228,14 +287,36 @@ pub(crate) fn prefix_link(ctx: Ctx) -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn setup(ctx: Ctx, status: bool, proton: Option<String>) -> Result<()> {
+pub(crate) async fn setup(ctx: Ctx, status: bool, no_battlenet: bool, proton: Option<String>) -> Result<()> {
     let Ctx { layout, .. } = ctx;
     use lightforge_core::config::Config;
     use lightforge_core::setup::{self, Event};
 
     let dirs = AppDirs::discover().context("resolving XDG directories")?;
-    let config = Config::load_or_default(&dirs.config_file())?;
+    let mut config = Config::load_or_default(&dirs.config_file())?;
+    // For this run only: nothing is written back.
+    if no_battlenet {
+        config.battle_net_declined = true;
+    }
     let current = setup::Status::inspect(&layout, &dirs, &config);
+    let json = super::output::json();
+    let status_json = |s: &setup::Status| {
+        serde_json::json!({
+            "ready": s.is_ready(),
+            "proton": s.proton.as_ref().map(build_json),
+            "prefix": { "path": s.prefix.prefix, "ready": s.prefix.is_ready() },
+            "battle_net": { "installed": s.battle_net, "wanted": s.battle_net_wanted },
+            "builds_seen": s.installed.len(),
+            "outstanding": s.outstanding().iter().map(|step| step.label()).collect::<Vec<_>>(),
+        })
+    };
+    if json && status {
+        super::output::print_json(&status_json(&current));
+        return Ok(());
+    }
+    // The text report goes to stderr under `--json`, which keeps stdout for
+    // the result line.
+    let quiet = json.then(super::output::StdoutToStderr::new);
 
     let mark = |done: bool| if done { "ok " } else { "-- " };
     println!(
@@ -252,9 +333,13 @@ pub(crate) async fn setup(ctx: Ctx, status: bool, proton: Option<String>) -> Res
         current.prefix.prefix.display()
     );
     println!(
-        "{}battle.net      {}",
+        "{}battle.net      {}{}",
         mark(current.battle_net),
-        layout.battle_net_dir().display()
+        layout.battle_net_dir().display(),
+        match (current.battle_net, config.battle_net_declined) {
+            (false, true) => "  (declined; WoW does not need it)",
+            _ => "",
+        }
     );
     println!("   builds seen     {}", current.installed.len());
     println!(
@@ -269,6 +354,30 @@ pub(crate) async fn setup(ctx: Ctx, status: bool, proton: Option<String>) -> Res
 
     let mut last = std::time::Instant::now();
     let final_status = setup::run(&layout, &dirs, &config, proton.as_deref(), |event| {
+        if json {
+            let line = match event {
+                Event::Started(step) => serde_json::json!({
+                    "event": "step", "step": step.label(), "state": "started", "detail": step.detail(),
+                }),
+                Event::Progress { done, total } => {
+                    if last.elapsed().as_millis() < 500 && Some(done) != total {
+                        return;
+                    }
+                    last = std::time::Instant::now();
+                    serde_json::json!({
+                        "event": "progress", "state": "downloading", "unit": "bytes",
+                        "bytes_downloaded": done, "total_bytes": total,
+                        "percent": total.map(|t| super::output::percent_of(done, t)),
+                    })
+                }
+                Event::Finished { step, skipped, note } => serde_json::json!({
+                    "event": "step", "step": step.label(),
+                    "state": if skipped { "skipped" } else { "finished" }, "note": note,
+                }),
+            };
+            super::output::eprint_json_line(&line);
+            return;
+        }
         match event {
             Event::Started(step) => println!("\n> {} — {}", step.label(), step.detail()),
             Event::Progress { done, total } => {
@@ -294,6 +403,10 @@ pub(crate) async fn setup(ctx: Ctx, status: bool, proton: Option<String>) -> Res
     })
     .await?;
 
-    println!("\nready           {}", final_status.is_ready());
+    drop(quiet);
+    match json {
+        true => super::output::print_result_line(status_json(&final_status)),
+        false => println!("\nready           {}", final_status.is_ready()),
+    }
     Ok(())
 }

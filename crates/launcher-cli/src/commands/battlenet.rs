@@ -296,3 +296,289 @@ fn warn_on_downgrade(layout: &Layout, build: &lightforge_core::proton::ProtonRel
         );
     }
 }
+
+/// How long a client started for a launch gets to sign itself in. One that
+/// has to show its login form gets [`SIGN_IN_BY_HAND`] instead.
+const SIGN_IN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// How long someone gets to sign in on the client's own form, the one time
+/// it cannot sign itself in.
+const SIGN_IN_BY_HAND: std::time::Duration = std::time::Duration::from_secs(300);
+/// How long a game that just exited gets to be gone in the client's eyes.
+/// Agent tells it 4 to 6 s late.
+const GAME_GONE_WITHIN: std::time::Duration = std::time::Duration::from_secs(15);
+/// How long the client gets to log what it did with a launch (about 15 ms).
+const TAKEN_WITHIN: std::time::Duration = std::time::Duration::from_secs(10);
+/// How long after a hand-off the client's window is sent back to the tray.
+/// It closes it itself once the game runs: 3.3 s after a cold start.
+const KEEP_IN_TRAY: std::time::Duration = std::time::Duration::from_secs(8);
+/// How long a handed-off game gets to appear.
+const HANDOFF_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// Whether Battle.net is installed in the prefix.
+pub(crate) fn client_installed(layout: &Layout) -> bool {
+    lightforge_core::battlenet::Installer::new(layout, PathBuf::new()).is_installed()
+}
+
+/// The error for a game that needs the client when there is none.
+pub(crate) fn client_missing(code: &ProductCode) -> anyhow::Error {
+    crate::error::typed_with_hint(
+        crate::error::ErrorKind::NotFound,
+        format!("{code} signs in through Battle.net, which is not installed in the prefix"),
+        "run `lightforge setup`, or `lightforge battlenet-setup`; WoW never needs it",
+    )
+}
+
+/// The Proton runner every Battle.net invocation uses: its pin, Steam's
+/// runtime where the host has no 32-bit gnutls, and the shared profile's
+/// environment. Returns the wrappers the client itself runs under.
+fn client_runner(
+    layout: &Layout,
+    proton: Option<&str>,
+    code: Option<&ProductCode>,
+) -> Result<(lightforge_core::prefix::ProtonRunner, lightforge_core::proton::ProtonRelease, Vec<PathBuf>)> {
+    let (mut runner, build) = proton_runner(layout, battle_net_pin(proton, code))?;
+    warn_on_downgrade(layout, &build);
+    let steam = lightforge_core::steam::SteamRoot::discover();
+    if let Some(entry) = lightforge_core::runtime::tls_container(&build.path, steam.as_ref())? {
+        tracing::info!("no 32-bit gnutls here, running Battle.net in {}", entry.display());
+        runner = runner.in_container(entry);
+    }
+    let shared = AppDirs::discover()
+        .ok()
+        .and_then(|dirs| Config::load_or_default(&dirs.config_file()).ok())
+        .map(|config| config.battle_net_tweaks)
+        .unwrap_or_default();
+    let tools = lightforge_core::tweaks::HostTools::detect();
+    for (key, value) in shared.environment(&tools) {
+        runner = runner.with_env(key, value);
+    }
+    Ok((runner, build, shared.wrappers(&tools)))
+}
+
+/// Wait on a Battle.net invocation off-thread, so it never stays a zombie.
+fn reap_later(mut child: std::process::Child) {
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+}
+
+/// Start a game that signs in through Battle.net, with as little of the
+/// client as it takes.
+///
+/// The client is started in the tray (or reused when it is already running),
+/// handed `--exec="launch <uid>"` once it has signed in, and the window it
+/// raises for the command is closed again as soon as it maps. Then this waits
+/// for the game, and for it to exit. The client never sees a password from
+/// Lightforge: the one time it cannot sign itself in, it shows its own form.
+pub(crate) fn hand_off(ctx: Ctx, code: ProductCode, proton: Option<String>, dry_run: bool) -> Result<()> {
+    let Ctx { layout, config } = ctx;
+    use crate::error::{typed, ErrorKind};
+    use lightforge_core::battlenet::{self, Launch, Readiness};
+    use lightforge_core::preflight::{self, NoDownloads, Preflight};
+
+    let json = super::output::json();
+    if !client_installed(&layout) {
+        return Err(client_missing(&code));
+    }
+    let user = config.prefix_user.clone();
+    let families = lightforge_core::families::Families::read(&layout, &user, config.region);
+    let Some(uid) = battlenet::resolve_game_uid(&code, &families) else {
+        return Err(crate::error::typed_with_hint(
+            ErrorKind::NotFound,
+            format!("Battle.net has no game tile for {code}"),
+            "start the client once (`lightforge battlenet-run`) so its catalogue is cached, then try again",
+        ));
+    };
+    let install_uid = families.install_uid(code.as_str()).unwrap_or(code.as_str()).to_owned();
+    let (runner, build, wrappers) = client_runner(&layout, proton.as_deref(), Some(&code))?;
+
+    if dry_run {
+        match json {
+            true => super::output::print_result_line(serde_json::json!({
+                "product": code.as_str(),
+                "status": "dry_run",
+                "via": "battle.net",
+                "proton": build.version,
+                "game_uid": uid,
+                "install_uid": install_uid,
+                "client_running": preflight::client_running(&layout),
+            })),
+            false => {
+                println!("using {} ({})", build.version, build.path.display());
+                println!("via             Battle.net, --exec=\"launch {uid}\"");
+                println!("client          {}", match preflight::client_running(&layout) {
+                    true => "running, the launch goes to it",
+                    false => "started in the tray first",
+                });
+            }
+        }
+        return Ok(());
+    }
+    if !json {
+        println!("using {} ({})", build.version, build.path.display());
+    }
+
+    // Taken before the client is told anything, so a game that was already
+    // playing is not mistaken for this launch's.
+    let before = preflight::games_running(&layout);
+
+    // Two phases: a cold client ignores `--exec=launch` (signed in at 5 s,
+    // game at 53 s, measured). A second invocation hands it over IPC.
+    if !preflight::client_running(&layout) {
+        let report = Preflight::new(user.clone())
+            .with_managed(super::managed_products())
+            .with_background_client(true)
+            .run(&runner, &layout, Some(&code), &mut NoDownloads)
+            .context("pre-flight cleanup")?;
+        if !json {
+            print_preflight(&report);
+        }
+
+        // In the tray only where it can sign itself in: otherwise the login
+        // form has to be seen, once.
+        let in_tray = battlenet::signs_in_by_itself(&layout, &user);
+        let _ = battlenet::configure(&layout, &user, &battlenet::window_state_tweaks(in_tray));
+        let how = match in_tray {
+            true => Launch::Autostart,
+            false => Launch::Client,
+        };
+        let started = std::time::SystemTime::now();
+        reap_later(battlenet::launch_wrapped(&runner, &layout, &how, &wrappers).context("starting Battle.net")?);
+        let within = match in_tray {
+            true => SIGN_IN_TIMEOUT,
+            false => {
+                let say = "Battle.net needs you to sign in once, in its own window; \
+                           after that it starts in the tray";
+                match json {
+                    true => super::output::eprint_json_line(&serde_json::json!({
+                        "event": "attention", "product": code.as_str(), "message": say,
+                    })),
+                    false => println!("sign in         {say}"),
+                }
+                SIGN_IN_BY_HAND
+            }
+        };
+        if battlenet::wait_until_ready(&layout, &user, started, within) == Readiness::NeedsAttention {
+            return Err(typed(
+                ErrorKind::Timeout,
+                "Battle.net did not sign in; look at its window (two-factor, an outage or a \
+                 client update), then run this again",
+            ));
+        }
+    }
+
+    // Closed meanwhile: sending now would start a cold client that drops it.
+    if !preflight::client_running(&layout) {
+        return Err(typed(ErrorKind::Cancelled, "Battle.net closed before the game could be handed to it"));
+    }
+
+    let session = battlenet::SessionLog::find(&layout, &user);
+    if let Some(log) = &session {
+        if log.pending_update(&install_uid) {
+            return Err(typed(
+                ErrorKind::Busy,
+                format!("Battle.net holds {code} back for an update; it is patching it, try again once it is done"),
+            ));
+        }
+        // A game that just exited still runs in the client's eyes, and a
+        // launch then only selects its tile.
+        if !log.wait_until_closed(&install_uid, GAME_GONE_WITHIN) {
+            tracing::warn!("Battle.net still counts {install_uid} as running; sending the launch anyway");
+        }
+    }
+
+    // The client raises its window for the command until the game is up;
+    // one nobody could see before goes straight back to the tray.
+    let tray = match battlenet::ClientWindows::connect(preflight::client_pids(&layout)) {
+        Ok(windows) if windows.any_shown().is_ok_and(|shown| !shown) => Some(windows),
+        Ok(_) => None,
+        Err(e) => {
+            tracing::info!("Battle.net's window stays as the client leaves it: {e}");
+            None
+        }
+    };
+    let launch = Launch::Product { code: code.clone(), exec: Some(uid.clone()) };
+    reap_later(battlenet::launch(&runner, &layout, &launch).context("handing the launch to Battle.net")?);
+    if let Some(windows) = tray {
+        std::thread::spawn(move || match windows.keep_closed(std::time::Instant::now() + KEEP_IN_TRAY) {
+            Ok(0) => {}
+            Ok(closed) => tracing::info!("sent Battle.net's window back to the tray {closed} time(s)"),
+            Err(e) => tracing::warn!("stopped keeping Battle.net in the tray: {e}"),
+        });
+    }
+
+    if session.as_ref().is_some_and(|log| !log.launch_taken(TAKEN_WITHIN)) {
+        let why = match (preflight::client_running(&layout), session.is_some_and(|log| log.updated_itself())) {
+            (true, _) => "Battle.net did not take the launch",
+            (false, true) => "Battle.net restarted to update itself; run this again",
+            (false, false) => "Battle.net closed instead of launching the game",
+        };
+        return Err(typed(ErrorKind::Unknown, format!("{code}: {why}")));
+    }
+
+    let Some(game) = preflight::wait_for_game_start(&layout, &before, HANDOFF_TIMEOUT) else {
+        return Err(typed(
+            ErrorKind::Timeout,
+            format!("{code} did not start within {}s of the hand-off", HANDOFF_TIMEOUT.as_secs()),
+        ));
+    };
+    match json {
+        true => super::output::eprint_json_line(&serde_json::json!({
+            "event": "running", "product": code.as_str(), "pid": game.pid, "via": "battle.net",
+        })),
+        false => println!("running         {} (pid {})", game.name, game.pid),
+    }
+    preflight::wait_for_exit(game.pid).context("waiting for the game")?;
+    // Not our child: its exit code belongs to the client.
+    match json {
+        true => super::output::print_result_line(serde_json::json!({
+            "product": code.as_str(), "status": "exited", "exit_code": null, "via": "battle.net",
+        })),
+        false => println!("exited"),
+    }
+    Ok(())
+}
+
+/// Install a game Battle.net installs: its own install flow, which asks
+/// where and in which language. A running client takes it over IPC.
+///
+/// The client always boots to its homepage, which draws over a launch verb;
+/// `--game=<uid> --install` has a view of its own, so that is what shows.
+pub(crate) fn install_flow(ctx: Ctx, code: ProductCode, dry_run: bool) -> Result<()> {
+    let Ctx { layout, config } = ctx;
+    use lightforge_core::battlenet::{self, Launch};
+
+    if !client_installed(&layout) {
+        return Err(client_missing(&code));
+    }
+    let user = config.prefix_user.clone();
+    let families = lightforge_core::families::Families::read(&layout, &user, config.region);
+    let uid = families.install_uid(code.as_str()).unwrap_or(code.as_str()).to_owned();
+    let json = super::output::json();
+    if dry_run {
+        match json {
+            true => super::output::print_result_line(serde_json::json!({
+                "product": code.as_str(), "status": "dry_run", "via": "battle.net", "install_uid": uid,
+            })),
+            false => println!("would open Battle.net's install flow for {code} (`--game={uid} --install`)"),
+        }
+        return Ok(());
+    }
+    let (runner, _build, wrappers) = client_runner(&layout, None, Some(&code))?;
+    // A normal window: the next thing that happens is someone choosing a folder.
+    let _ = battlenet::configure(&layout, &user, &battlenet::window_state_tweaks(false));
+    let launch = Launch::InstallFlow { uid: uid.clone() };
+    let wrappers = match lightforge_core::preflight::client_running(&layout) {
+        // The invocation becomes the client only when none runs.
+        true => Vec::new(),
+        false => wrappers,
+    };
+    reap_later(battlenet::launch_wrapped(&runner, &layout, &launch, &wrappers).context("opening Battle.net's install flow")?);
+    match json {
+        true => super::output::print_result_line(serde_json::json!({
+            "product": code.as_str(), "status": "handed_off", "via": "battle.net", "install_uid": uid,
+        })),
+        false => println!("Battle.net is asking where to install {code}; `lightforge list` shows it once it is there"),
+    }
+    Ok(())
+}

@@ -9,6 +9,10 @@ Lightforge is now a command-line program only: the graphical launcher is gone, a
 - Gone with it: the in-app bug reporter, the self-update check and notice, adding Lightforge to Steam, the themed artwork and the `assets` command, and the settings only the window used (`contact`, `minimize_on_launch`, `setup_complete`, `steamos_use`, `patch_notes_muted`, `patch_notes_seen`, `check_for_updates`, `interface_size`, `assets_source`). Old config files still load; those keys are ignored.
 - The binary no longer links libudev: gamepads were the launcher's.
 - Running the installer again replaces an older install and removes the old launcher, its menu entry and icons.
+- New: a machine interface for front ends, Lightforge's own included. `-j/--json` works on every command: the result is JSON on stdout, long operations stream NDJSON progress and step events on stderr, and errors are one JSON line (`{"error","type","hint","fix"}`) with an exit code per type (1 invalid input, not found or unknown; 2 usage; 75 rate limited; 82 timeout; 83 cancelled; 84 input closed; 85 disk full; 86 offline; 87 busy; 88 store damaged).
+- New: `capabilities` describes every command and flag, which commands return data under `--json`, the event names, the error types and their exit codes, offline.
+- New: `list`, `info`, `available`, `install`, `update`, `running` and `stop`; `config` subcommands to view or set one setting; `completions <shell>`; `-v/-vv/-vvv` logs on stderr; `LIGHTFORGE_CONFIG_DIR`, `LIGHTFORGE_DATA_DIR` and `LIGHTFORGE_CACHE_DIR` to move Lightforge's own state. Destructive commands require `--yes` under `--json`.
+- `play <game>` takes the product as an argument, exits with the game's own exit code, and hands games other than WoW to Battle.net in the tray. `setup --no-battlenet` leaves Battle.net out of one run.
 
 ## 1.0.0-beta.11
 

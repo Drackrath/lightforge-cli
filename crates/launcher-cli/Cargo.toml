@@ -15,10 +15,14 @@ path = "src/main.rs"
 lightforge-core.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+clap_complete.workspace = true
 libc.workspace = true
+# Only to classify a failed request for `--json` errors (`error::classify`).
+reqwest.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "signal"] }
 
 [package.metadata.deb]
 # The deb is named for the project, not for the crate that carries the
@@ -32,9 +36,10 @@ extended-description = """\
 Lightforge talks to Blizzard's content servers directly — the same TACT/CASC \
 pipeline the real client uses — so it installs, patches, verifies and \
 launches every flavour of World of Warcraft from the command line, without \
-Battle.net in the way. Battle.net is still managed for you if you want it: \
-one Wine prefix, a verified Proton-GE build and the client. Addons, \
-per-game Proton pinning and graphics tuning are built in."""
+the Battle.net client: one Wine prefix, a verified Proton-GE build, and the \
+game's own login screen. Every other Blizzard game is handed to Battle.net, \
+installed on request and kept in the background. Addons, per-game Proton \
+pinning and graphics tuning are built in."""
 # Not `$auto`: that resolves against the host's libraries, and this package is
 # assembled on a rolling-release machine from a binary built in a Debian 12
 # container. The floor is stated instead, and `make check-glibc` is what

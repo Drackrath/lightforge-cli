@@ -3,11 +3,27 @@
 use crate::*;
 
 #[derive(Parser)]
-#[command(name = "lightforge", version, about = "Lightforge CLI")]
+#[command(
+    name = "lightforge",
+    version,
+    about = "Lightforge: install, update and play Blizzard games on Linux",
+    help_template = "{before-help}{about-with-newline}Version: {version}\n\n{usage-heading} {usage}\n\n{all-args}{after-help}"
+)]
 pub(crate) struct Cli {
     /// Override the Blizzard root (default: ~/Games/Blizzard).
     #[arg(long, global = true)]
     pub(crate) root: Option<PathBuf>,
+
+    /// Emit output (and errors) as JSON. Works with every command: results on
+    /// stdout, progress events as NDJSON on stderr.
+    #[arg(short = 'j', long, global = true)]
+    pub(crate) json: bool,
+
+    /// Show logs on stderr (repeatable: -v, -vv, -vvv). Without it only
+    /// warnings and errors are shown; -v adds Lightforge's debug logs, -vv
+    /// everyone's, -vvv traces. `LIGHTFORGE_LOG` overrides Lightforge's level.
+    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    pub(crate) verbose: u8,
 
     #[command(subcommand)]
     pub(crate) command: Command,
@@ -17,13 +33,90 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Print the resolved directory layout.
     Paths,
-    /// Print the effective configuration as TOML.
-    Config,
+    /// Print the effective configuration as TOML, or view or set one setting.
+    Config {
+        #[command(subcommand)]
+        command: Option<ConfigCommand>,
+    },
     /// Check this system for what Battle.net and the games need under Proton.
-    Doctor {
-        /// Print the checks as JSON.
+    Doctor,
+    /// Describe this build for front ends: commands, flags, JSON events, error
+    /// types and exit codes, and the `--json` schema version. Offline.
+    ///
+    /// Name a command path (e.g. `capabilities config game`) for its flags,
+    /// values and help.
+    Capabilities {
+        /// Command path to describe, e.g. `config game`.
+        path: Vec<String>,
+    },
+    /// Print a shell completion script, e.g. `lightforge completions bash`.
+    Completions {
+        /// The shell to complete for.
+        shell: clap_complete::Shell,
+    },
+    /// List the games: the configured WoW flavours, installed or not, and the
+    /// games Battle.net has installed.
+    List {
+        /// Only the installed ones.
         #[arg(long)]
-        json: bool,
+        installed: bool,
+        /// Skip the version service: no update check.
+        #[arg(long)]
+        offline: bool,
+    },
+    /// Show a product's install and what Blizzard currently ships for it.
+    Info {
+        /// Product codes, e.g. `wow wow_classic_era`.
+        #[arg(required = true, value_parser = commands::product_code)]
+        products: Vec<ProductCode>,
+        /// Skip the version service.
+        #[arg(long)]
+        offline: bool,
+    },
+    /// Whether a product is installed and ready to play. Offline.
+    Available {
+        #[arg(value_parser = commands::product_code)]
+        product: ProductCode,
+    },
+    /// Install a game into one of the configured libraries.
+    ///
+    /// The destination comes from the library (`--library`, else the one the
+    /// product is assigned to, else the default), so a front end never builds
+    /// a path. A game other than WoW is Battle.net's to install: this opens
+    /// the client's own install flow for it, which asks where.
+    Install {
+        #[arg(value_parser = commands::product_code)]
+        product: ProductCode,
+        /// The library to install into, by id or name, as `lightforge paths`
+        /// lists them.
+        #[arg(long)]
+        library: Option<String>,
+        /// Locale to install, e.g. `deDE`. Default: the product's, else the
+        /// configured one.
+        #[arg(long)]
+        locale: Option<String>,
+        /// Plan and report, then stop without fetching any content.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Update an installed game, or with no product list the ones that have
+    /// an update. Battle.net patches its own games before it launches them.
+    Update {
+        #[arg(value_parser = commands::product_code)]
+        product: Option<ProductCode>,
+    },
+    /// List the games running in the prefix.
+    Running,
+    /// Stop a running game, or every game in the prefix.
+    Stop {
+        #[arg(value_parser = commands::product_code)]
+        product: Option<ProductCode>,
+        /// Kill at once, without the grace period. Needs `--yes` with `--json`.
+        #[arg(long)]
+        force: bool,
+        /// Confirm `--force` in `--json` mode.
+        #[arg(long)]
+        yes: bool,
     },
     /// List Proton builds installed on this system.
     Proton,
@@ -93,14 +186,19 @@ pub(crate) enum Command {
         #[arg(long)]
         skip_preflight: bool,
     },
-    /// Launch the game directly under Proton.
+    /// Launch a game.
     ///
-    /// Runs pre-flight first, then starts `Wow.exe` through the prefix's
-    /// Windows-visible path. Battle.net is not involved.
+    /// World of Warcraft starts directly under Proton and shows its own login
+    /// screen; Battle.net is not involved. Every other game needs Battle.net's
+    /// sign-in, so it is handed to the client, which is started in the
+    /// background and whose window is closed as soon as it appears.
     Play {
-        /// Product to launch, e.g. `wow` or `wow_classic`.
-        #[arg(long, default_value = "wow", value_parser = commands::product_code)]
-        product: ProductCode,
+        /// Product to launch, e.g. `wow` or `wow_classic`. Default: `wow`.
+        #[arg(value_parser = commands::product_code, conflicts_with = "product")]
+        game: Option<ProductCode>,
+        /// The same, as a flag.
+        #[arg(long, value_parser = commands::product_code)]
+        product: Option<ProductCode>,
         /// Proton build to launch under.
         #[arg(long)]
         proton: Option<String>,
@@ -133,7 +231,7 @@ pub(crate) enum Command {
     /// Rebuild an install's CASC store into a scratch copy, then verify it.
     ///
     /// The source is only ever read. Used to prove that a store Lightforge
-    /// wrote is byte-for-byte usable in place of one Agent wrote.
+    /// wrote is byte-for-byte usable in place of one Blizzard's installer wrote.
     CascRebuild {
         /// Existing install to read from.
         src: PathBuf,
@@ -547,10 +645,17 @@ pub(crate) enum Command {
         dry_run: bool,
     },
     /// Report or run first-run provisioning: Proton, prefix, Battle.net.
+    ///
+    /// Battle.net is left out when `battle_net_declined` is set in the config,
+    /// or for this run with `--no-battlenet`.
     Setup {
         /// Only report what is missing; provision nothing.
         #[arg(long)]
         status: bool,
+        /// Leave Battle.net out of this run. WoW does not need it; the other
+        /// games do.
+        #[arg(long)]
+        no_battlenet: bool,
         /// Proton-GE release to install if one is needed.
         #[arg(long)]
         proton: Option<String>,
@@ -641,4 +746,102 @@ pub(crate) enum Command {
         #[arg(long)]
         version: String,
     },
+}
+
+/// `lightforge config <setting>`: each prints the setting without a value and
+/// saves it with one.
+#[derive(Subcommand)]
+pub(crate) enum ConfigCommand {
+    /// Print the effective configuration (TOML, or JSON with `--json`).
+    Show,
+    /// View or set the download speed cap in MB/s; `off` removes it.
+    DownloadLimit {
+        /// MB/s, or `off`.
+        value: Option<String>,
+    },
+    /// View or set the Proton build games launch under unless they pin their
+    /// own; `auto` follows the tested build.
+    Proton {
+        /// A release tag such as `GE-Proton11-7`, or `auto`.
+        name: Option<String>,
+    },
+    /// View or set which addon builds are accepted by default.
+    AddonChannel {
+        channel: Option<AddonChannelArg>,
+    },
+    /// View or set whether addons update in Lightforge's own pass.
+    AddonAutoUpdate {
+        value: Option<OnOff>,
+    },
+    /// View or set whether launching a game pauses other games' downloads.
+    PauseDownloadsWhilePlaying {
+        value: Option<OnOff>,
+    },
+    /// View or set the Blizzard region games are downloaded from.
+    Region {
+        region: Option<RegionArg>,
+    },
+    /// View or set the language games are installed in from now on, e.g.
+    /// `deDE`. Installed games keep theirs.
+    Locale {
+        locale: Option<String>,
+    },
+    /// View or set one game's own settings: its Proton build and environment.
+    Game {
+        #[arg(value_parser = commands::product_code)]
+        product: ProductCode,
+        /// Launch this game under this Proton build.
+        #[arg(long, conflicts_with = "clear_proton")]
+        proton: Option<String>,
+        /// Follow the default Proton build again.
+        #[arg(long)]
+        clear_proton: bool,
+        /// Set an environment variable for the launch, `KEY=VALUE`. Repeatable;
+        /// an empty value removes the variable.
+        #[arg(long = "env", value_name = "KEY=VALUE", value_parser = parse_env)]
+        env: Vec<(String, String)>,
+        /// Remove every environment variable set for the game, before `--env`.
+        #[arg(long)]
+        clear_env: bool,
+    },
+}
+
+/// `on` or `off`.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum OnOff {
+    On,
+    Off,
+}
+
+impl OnOff {
+    pub(crate) fn is_on(self) -> bool {
+        self == Self::On
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum AddonChannelArg {
+    Stable,
+    Beta,
+    Alpha,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum RegionArg {
+    Eu,
+    Us,
+    Kr,
+    Tw,
+    Cn,
+    Sg,
+}
+
+/// `KEY=VALUE` for `config game --env`.
+fn parse_env(text: &str) -> Result<(String, String), String> {
+    match text.split_once('=') {
+        Some((key, value)) if !key.is_empty() && !key.contains(char::is_whitespace) => {
+            Ok((key.to_owned(), value.to_owned()))
+        }
+        _ => Err("expected KEY=VALUE, e.g. `DXVK_HUD=fps`".to_owned()),
+    }
 }

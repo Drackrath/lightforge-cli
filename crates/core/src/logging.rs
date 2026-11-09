@@ -55,39 +55,93 @@ pub enum LogError {
 ///
 /// Also installs a panic hook that logs the panic and its location.
 pub fn init(dirs: &AppDirs, name: &str) -> Result<PathBuf, LogError> {
-    let dir = dirs.log_dir();
-    fs::create_dir_all(&dir).map_err(|source| LogError::Dir { path: dir.clone(), source })?;
-    let path = dir.join(format!("{name}.log"));
-    let writer = RotatingFile::open(&path)
-        .map_err(|source| LogError::Open { path: path.clone(), source })?;
+    init_with_stderr(dirs, name, None)
+}
 
+/// Target of events that are for the log file only, never the terminal:
+/// what a front end has already shown the user in its own words.
+pub const FILE_ONLY: &str = "lightforge_file_only";
+
+/// [`init`], plus a terminal log on stderr when `verbosity` is `Some`: the
+/// count of `-v` flags. At 0 only warnings and errors are shown; `-v` adds
+/// Lightforge's debug output, `-vv` everyone's, `-vvv` traces.
+/// [`LEVEL_VAR`], when set, decides Lightforge's own level in both.
+///
+/// A log file that cannot be opened still leaves the terminal log running,
+/// and is returned as the error.
+pub fn init_with_stderr(dirs: &AppDirs, name: &str, verbosity: Option<u8>) -> Result<PathBuf, LogError> {
     let level = std::env::var(LEVEL_VAR)
         .ok()
-        .and_then(|value| value.trim().parse::<LevelFilter>().ok())
-        .unwrap_or(LevelFilter::INFO);
-    // Other crates at warnings only, or their chatter rotates ours away.
-    let filter = Targets::new()
-        .with_default(LevelFilter::WARN)
-        .with_target("lightforge_core", level)
-        .with_target("lightforge_gui", level)
-        .with_target("lightforge_cli", level)
-        .with_target("lightforge", level);
+        .and_then(|value| value.trim().parse::<LevelFilter>().ok());
+
+    let file = open_log(dirs, name).map(|(path, writer)| {
+        // Other crates at warnings only, or their chatter rotates ours away.
+        let ours = level.unwrap_or(LevelFilter::INFO);
+        let filter = Targets::new()
+            .with_default(LevelFilter::WARN)
+            .with_target("lightforge_core", ours)
+            .with_target("lightforge_cli", ours)
+            .with_target("lightforge", ours)
+            .with_target(FILE_ONLY, ours);
+        let layer = tracing_subscriber::fmt::layer()
+            .with_ansi(false)
+            .with_timer(LocalTime)
+            .with_writer(writer)
+            .with_filter(filter);
+        (path, layer)
+    });
+    let (path, file_layer) = match file {
+        Ok((path, layer)) => (Ok(path), Some(layer)),
+        Err(e) => (Err(e), None),
+    };
+
+    let stderr_layer = verbosity.map(|verbosity| {
+        use std::io::IsTerminal;
+        tracing_subscriber::fmt::layer()
+            .with_writer(io::stderr)
+            .with_ansi(io::stderr().is_terminal())
+            .with_target(verbosity >= 2)
+            .without_time()
+            .with_filter(stderr_filter(verbosity, level))
+    });
 
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_ansi(false)
-                .with_timer(LocalTime)
-                .with_writer(writer)
-                .with_filter(filter),
-        )
+        .with(file_layer)
+        .with(stderr_layer)
         .try_init()
         .map_err(|_| LogError::AlreadySet)?;
 
     install_panic_hook();
     tracing::info!(version = env!("CARGO_PKG_VERSION"), process = name, "started");
     crate::debug::log_environment();
-    Ok(path)
+    path
+}
+
+fn open_log(dirs: &AppDirs, name: &str) -> Result<(PathBuf, RotatingFile), LogError> {
+    let dir = dirs.log_dir();
+    fs::create_dir_all(&dir).map_err(|source| LogError::Dir { path: dir.clone(), source })?;
+    let path = dir.join(format!("{name}.log"));
+    let writer = RotatingFile::open(&path)
+        .map_err(|source| LogError::Open { path: path.clone(), source })?;
+    Ok((path, writer))
+}
+
+/// What the terminal log shows at `verbosity` `-v`s; `level` is
+/// [`LEVEL_VAR`]'s, which wins for Lightforge's own crates.
+fn stderr_filter(verbosity: u8, level: Option<LevelFilter>) -> Targets {
+    let (ours, others) = match verbosity {
+        0 => (LevelFilter::WARN, LevelFilter::WARN),
+        1 => (LevelFilter::DEBUG, LevelFilter::INFO),
+        2 => (LevelFilter::DEBUG, LevelFilter::DEBUG),
+        _ => (LevelFilter::TRACE, LevelFilter::TRACE),
+    };
+    let ours = level.unwrap_or(ours);
+    Targets::new()
+        .with_default(others)
+        .with_target("lightforge_core", ours)
+        .with_target("lightforge_cli", ours)
+        .with_target("lightforge", ours)
+        .with_target(FILE_ONLY, LevelFilter::OFF)
 }
 
 /// Log an error with its whole cause chain on one line, e.g.
@@ -293,6 +347,21 @@ mod tests {
             .sum();
         // The live file may overshoot by one line, so each is under limit+line.
         assert!(total <= 4 * (100 + 40), "{total} bytes kept");
+    }
+
+    #[test]
+    fn the_terminal_log_is_quiet_by_default_and_never_shows_file_only_events() {
+        use tracing::Level;
+        let quiet = stderr_filter(0, None);
+        assert!(quiet.would_enable("lightforge_core::net", &Level::WARN));
+        assert!(!quiet.would_enable("lightforge_core::net", &Level::INFO));
+        let loud = stderr_filter(1, None);
+        assert!(loud.would_enable("lightforge_core::net", &Level::DEBUG));
+        assert!(!loud.would_enable("reqwest", &Level::DEBUG));
+        assert!(stderr_filter(3, None).would_enable("reqwest", &Level::TRACE));
+        assert!(!stderr_filter(3, None).would_enable(FILE_ONLY, &Level::ERROR));
+        // The environment variable wins over the flags for our crates.
+        assert!(stderr_filter(0, Some(LevelFilter::INFO)).would_enable("lightforge", &Level::INFO));
     }
 
     #[test]

@@ -16,6 +16,38 @@ pub(crate) fn doctor(ctx: Ctx, json: bool) -> Result<()> {
 pub(crate) fn paths(ctx: Ctx) -> Result<()> {
     let Ctx { layout, .. } = ctx;
     let dirs = AppDirs::discover().context("resolving XDG directories")?;
+    if super::output::json() {
+        let libraries: Vec<serde_json::Value> = layout
+            .libraries()
+            .all()
+            .iter()
+            .map(|library| {
+                serde_json::json!({
+                    "id": library.id,
+                    "label": library.label,
+                    "state": library_state(library.state()),
+                    "default": library.is_default,
+                    "games": library.games(),
+                    "wow_install": layout.wow_install_in(library),
+                })
+            })
+            .collect();
+        super::output::print_json(&serde_json::json!({
+            "blizzard_root": layout.root(),
+            "compat_data": layout.compat_data(),
+            "prefix": layout.prefix(),
+            "battle_net": layout.battle_net_dir(),
+            "wow_symlink": layout.wow_symlink(),
+            "config_file": dirs.config_file(),
+            "config_dir": dirs.config_dir(),
+            "data_dir": dirs.data_dir(),
+            "cache_dir": dirs.cache_dir(),
+            "proton_dir": dirs.proton_dir(),
+            "log_dir": dirs.log_dir(),
+            "libraries": libraries,
+        }));
+        return Ok(());
+    }
     println!("blizzard root   {}", layout.root().display());
     println!("compat data     {}", layout.compat_data().display());
     println!("prefix          {}", layout.prefix().display());
@@ -26,12 +58,7 @@ pub(crate) fn paths(ctx: Ctx) -> Result<()> {
     println!("log dir         {}", dirs.log_dir().display());
 
     for library in layout.libraries().all() {
-        let state = match library.state() {
-            lightforge_core::library::State::Ready => "ready",
-            lightforge_core::library::State::New => "not set up",
-            lightforge_core::library::State::Missing => "not mounted",
-            lightforge_core::library::State::Foreign => "foreign marker",
-        };
+        let state = library_state(library.state()).replace('_', " ");
         println!(
             "\nlibrary         {} ({state}){}",
             library.label,
@@ -48,10 +75,14 @@ pub(crate) fn paths(ctx: Ctx) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn config() -> Result<()> {
-    // No loader here; show what a fresh install writes.
-    print!("{}", Config::with_default_products().to_toml()?);
-    Ok(())
+/// A library's state as `paths` names it.
+fn library_state(state: lightforge_core::library::State) -> &'static str {
+    match state {
+        lightforge_core::library::State::Ready => "ready",
+        lightforge_core::library::State::New => "not_set_up",
+        lightforge_core::library::State::Missing => "not_mounted",
+        lightforge_core::library::State::Foreign => "foreign_marker",
+    }
 }
 
 pub(crate) async fn products(region: String, codes: Vec<String>, all: bool, concurrency: usize) -> Result<()> {
@@ -69,6 +100,26 @@ pub(crate) async fn products(region: String, codes: Vec<String>, all: bool, conc
 
     let http = Http::new()?;
     let found = version::probe_all(&http, region, &candidates, concurrency).await;
+
+    if super::output::json() {
+        let rows: Vec<serde_json::Value> = found
+            .iter()
+            .filter(|s| all || s.exists())
+            .map(|s| serde_json::json!({
+                "product": s.code,
+                "label": s.label,
+                "live": s.exists(),
+                "version": s.version.as_ref().map(|v| v.versions_name.clone()),
+                "build_id": s.version.as_ref().map(|v| v.build_id),
+                "kind": match lightforge_core::product::Kind::of(&ProductCode::from(s.code.to_string())) {
+                    lightforge_core::product::Kind::Managed => "managed",
+                    lightforge_core::product::Kind::HandOff => "battle_net",
+                },
+            }))
+            .collect();
+        super::output::print_json(&serde_json::json!({ "region": region.as_str(), "products": rows }));
+        return Ok(());
+    }
 
     println!("{:<22} {:<24} {:<18} BUILD", "CODE", "LABEL", "VERSION");
     for status in &found {
@@ -103,6 +154,31 @@ pub(crate) async fn status(ctx: Ctx, code: ProductCode, region: String, offline:
     let region: Region = region.parse().context("parsing --region")?;
 
     let local = Local::inspect(&layout, &code);
+    let json = super::output::json();
+    if json {
+        let remote = match offline {
+            true => None,
+            false => version::versions(&Http::new()?, region, code.as_str())
+                .await
+                .ok()
+                .and_then(|rows| version::for_region(&rows, region, |v| &v.region).cloned()),
+        };
+        let state = decide(&local, remote.as_ref(), None);
+        super::output::print_json(&serde_json::json!({
+            "product": code.as_str(),
+            "install_dir": layout.product_dir(&code),
+            "build_key": local.build_key,
+            "version": local.version,
+            "executable": local.executable,
+            "store_files": local.store_files,
+            "installed": local.is_installed(),
+            "remote_build": remote.as_ref().map(|r| r.build_config.clone()),
+            "remote_version": remote.as_ref().map(|r| r.versions_name.clone()),
+            "action": super::output::state_tag(&state),
+            "playable": state.is_playable(),
+        }));
+        return Ok(());
+    }
     println!("product         {}", code.as_str());
     println!("install dir     {}", layout.product_dir(&code).display());
     println!("build key       {}", local.build_key.as_deref().unwrap_or("-"));
@@ -164,6 +240,21 @@ pub(crate) async fn update_check(ctx: Ctx, path: Option<PathBuf>, code: ProductC
         .context("fetching the version table")?;
     let remote = version::for_region(&versions, region, |v| &v.region)
         .context("the version table is empty")?;
+    if super::output::json() {
+        let status = Status::compare(local_build, local_version, remote);
+        super::output::print_json(&serde_json::json!({
+            "product": code.as_str(),
+            "install": install,
+            "installed": local_build.is_some(),
+            "local_build": local_build,
+            "local_version": local_version,
+            "remote_build": remote.build_config,
+            "remote_version": remote.versions_name,
+            "action": super::output::state_tag(&status.action()),
+            "update_available": matches!(status, Status::Behind { .. }),
+        }));
+        return Ok(());
+    }
     println!("service         {} ({:?})", region.host(), t.elapsed());
     println!("regions         {}", versions.len());
     println!("remote build    {} ({})", remote.build_config, remote.versions_name);

@@ -127,6 +127,45 @@ pub(crate) fn addons(ctx: Ctx, code: ProductCode, path: Option<PathBuf>, token: 
     let installed = addons::scan(&dir, &client)
         .with_context(|| format!("reading {}", dir.display()))?;
 
+    if super::output::json() {
+        let addon_json = |addon: &addons::Installed| {
+            serde_json::json!({
+                "folder": addon.folder,
+                "version": addon.version,
+                "ids": addon.ids.iter().map(|(p, id)| serde_json::json!({ "provider": p.as_str(), "id": id })).collect::<Vec<_>>(),
+                "out_of_date": addon.out_of_date,
+            })
+        };
+        let mut value = serde_json::json!({
+            "product": code.as_str(),
+            "dir": dir,
+            "interface": client.interface,
+            "addons": installed.iter().map(addon_json).collect::<Vec<_>>(),
+            "missing_dependencies": addons::missing_dependencies(&installed)
+                .into_iter()
+                .map(|(folder, dep)| serde_json::json!({ "addon": folder, "needs": dep }))
+                .collect::<Vec<_>>(),
+        });
+        if let Some(token) = token {
+            let collection = addons::Collection::parse(&read_token(&token)?)?;
+            value["collection"] = serde_json::json!({
+                "name": collection.collection_name,
+                "client": collection.client_type,
+                "addons": collection.reconcile(&installed).iter().map(|item| serde_json::json!({
+                    "name": item.entry.name,
+                    "provider": item.entry.provider().as_str(),
+                    "id": item.entry.id,
+                    "installed": item.is_installed(),
+                    "version": item.version,
+                    "matched_by": item.matched_by.map(|how| how.as_str()),
+                    "certain": item.matched_by.map(|how| how.is_certain()),
+                })).collect::<Vec<_>>(),
+            });
+        }
+        super::output::print_json(&value);
+        return Ok(());
+    }
+
     println!("addons dir      {}", dir.display());
     println!("installed       {}", installed.len());
     if let Some(interface) = client.interface {
@@ -202,6 +241,19 @@ pub(crate) async fn addon_search(query: String, code: ProductCode, limit: usize,
     )
     .await;
 
+    if super::output::json() {
+        super::output::print_json(&serde_json::json!({
+            "query": query,
+            "results": found.listings.iter().map(|l| serde_json::json!({
+                "provider": l.provider.as_str(),
+                "id": l.id,
+                "name": l.name,
+                "downloads": l.downloads,
+            })).collect::<Vec<_>>(),
+            "problems": found.problems.iter().map(|p| p.to_string()).collect::<Vec<_>>(),
+        }));
+        return Ok(());
+    }
     println!("{:<14} {:<22} {:<40} DOWNLOADS", "PROVIDER", "ID", "NAME");
     for listing in &found.listings {
         println!(
@@ -362,6 +414,21 @@ pub(crate) fn backup_list(ctx: Ctx, code: ProductCode) -> Result<()> {
     let dirs = AppDirs::discover().context("resolving XDG directories")?;
     let plan = settings_backup(&layout, &dirs, &code);
     let backups = plan.list().context("reading backups")?;
+    if super::output::json() {
+        super::output::print_json(&serde_json::json!({
+            "product": code.as_str(),
+            "dir": plan.dir,
+            "backups": backups.iter().map(|b| serde_json::json!({
+                "name": b.name(),
+                "when": b.when(),
+                "reason": b.reason.label(),
+                "build": b.build,
+                "size": b.size,
+                "accounts": b.accounts,
+            })).collect::<Vec<_>>(),
+        }));
+        return Ok(());
+    }
     if backups.is_empty() {
         println!("no backups in {}", plan.dir.display());
     }
